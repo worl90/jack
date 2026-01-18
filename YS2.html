@@ -14,6 +14,37 @@
 <style>
  html, body {width:100%;height:100%;margin:0;padding:0;overflow: hidden; zoom: 1.5} 
 .map_wrap {position:relative;overflow:hidden;width:100%;height:350px;}
+#addressSearchBox {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            z-index: 10;
+            background: white;
+            padding: 3px;
+            display: flex;
+            align-items: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            border: 1px solid #919191;
+            border-radius: 4px;
+        }
+        #addressInput {
+            width: 150px; /* 줌 1.5를 고려한 너비 */
+            height: 24px;
+            border: 1px solid #ddd;
+            padding: 0 5px;
+            outline: none;
+            font-size: 11px;
+        }
+        #addressSearchBox button {
+            height: 26px;
+            padding: 0 10px;
+            background: #425470;
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-size: 11px;
+            margin-left: 2px;
+        }
 .radius_border{border:1px solid #919191;border-radius:5px;}     
 .custom_typecontrol {position:absolute;bottom:190px;right:15px;overflow:hidden;width:130px;height:25px;margin:0;padding:0;z-index:1;font-size:12px;font-family:'Malgun Gothic', '맑은 고딕', sans-serif;}
 .custom_typecontrol span {display:block;width:65px;height:30px;float:left;text-align:center;line-height:25px;cursor:pointer;}
@@ -92,6 +123,11 @@
 
 </style>
 
+<div id="container">
+    <div id="addressSearchBox">
+        <input type="text" id="addressInput" placeholder="도로명 주소 입력" onkeypress="if(event.keyCode==13) {searchAddress();}">
+        <button onclick="searchAddress()">검색</button>
+    </div>
 
 <div id="container">
     <div id="rvWrapper">
@@ -334,6 +370,28 @@ function toggleRoadview(position){
     });
 }
 
+function searchAddress() {
+        var addr = document.getElementById('addressInput').value;
+        if (!addr.trim()) {
+            alert("주소를 입력해주세요.");
+            return;
+        }
+
+        geocoder.addressSearch(addr, function(result, status) {
+            if (status === kakao.maps.services.Status.OK) {
+                var coords = new kakao.maps.LatLng(result[0].y, result[0].x);
+                searchMarker.setMap(null);
+                searchMarker = new kakao.maps.Marker({
+                    map: map,
+                    position: coords
+                });
+                map.setCenter(coords);
+            } else {
+                alert("결과를 찾을 수 없습니다.");
+            }
+        });
+    }
+
 // 지도를 감싸고 있는 div의 크기를 조정하는 함수입니다
 function toggleMapWrapper(active, position) {
     if (active) {
@@ -460,7 +518,6 @@ function setOverlayMapTypeId2() {
         btnGroundHide.className = 'selected_btn';  
       
 } 
-
 
 
 
