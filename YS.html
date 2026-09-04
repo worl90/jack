@@ -1,102 +1,179 @@
+HTML
 <!DOCTYPE html>
 <html lang="ko">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>소화전 위치 지도 (드래그 수정 & 시트 연동)</title>
+    <title>소화전 위치 지도 (추가/수정 완결판)</title>
     
-    <!-- 카카오 지도 SDK -->
-    <script type="text/javascript" src="//dapi.kakao.com/v2/maps/sdk.js?appkey=8716aeaad27b0f020a25063da87bd5de&libraries=services"></script>
-    
+    <!-- 카카오 지도 SDK & 내비게이션 SDK -->
+    <script type="text/javascript" src="//dapi.kakao.com/v2/maps/sdk.js?appkey=8716aeaad27b0f020a25063da87bd5de&libraries=services,clusterer"></script>
+    <script src="//t1.kakaocdn.net/kakao_js_sdk/2.1.0/kakao.min.js"></script>
+
     <style>
         /* 기본 레이아웃 */
         html, body { width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden; font-family: 'Malgun Gothic', '맑은 고딕', sans-serif; } 
-        #container { width: 100%; height: 100%; position: relative; background: #f9f9f9; }
-        #map { width: 100%; height: 100%; z-index: 1; }
+        #container { overflow: hidden; height: 100%; position: relative; background: #f9f9f9; }
+        #mapWrapper { width: 100%; height: 100%; z-index: 1; transition: 0.3s; }
+        #rvWrapper { width: 50%; height: 100%; top: 0; right: 0; position: absolute; z-index: 0; transition: 0.3s; visibility: hidden; }
+        #container.view_roadview #mapWrapper { width: 50%; }
+        #container.view_roadview #rvWrapper { visibility: visible; }
+
+        /* 지도 컨트롤 버튼 */
+        .radius_border { border: 1px solid #919191; border-radius: 5px; box-shadow: 0 1px 2px rgba(0,0,0,0.2); }      
+        .btn { background: linear-gradient(#fff, #e6e6e6); color: #333; }        
+        .btn:hover { background: linear-gradient(#f5f5f5, #e3e3e3); }
+        .selected_btn { color: #fff; background: linear-gradient(#425470, #5b6d8a); }
         
-        /* 🚨 화면 중앙 상단 수정모드 버튼 */
+        .mobile_controls_wrapper { pointer-events: none; z-index: 2; position: absolute; width: 100%; height: 100%; top: 0; left: 0; }
+        .control_group { position: absolute; display: flex; overflow: hidden; pointer-events: auto; }
+        .control_group span { display: block; width: auto; padding: 0 12px; height: 32px; line-height: 32px; text-align: center; font-size: 13px; cursor: pointer; }
+        .ct_map    { bottom: 20px; left: 5px; }       
+        .ct_ground { bottom: 20px; left: 160px; }     
+        .ct_me     { bottom: 20px; left: 410px; }     
+        .ct_list   { bottom: 20px; right: 22px; }     
+
+        #roadviewControl { position: absolute; bottom: 15px; left: 320px; width: 65px; height: 25px; padding: 2px; z-index: 2; background: #f7f7f7; border-radius: 4px; border: 1px solid #c8c8c8; cursor: pointer; }
+        #roadviewControl span { background: url(https://t1.daumcdn.net/localimg/localimages/07/mapapidoc/mapworker.png) no-repeat; padding-left: 23px; height: 24px; font-size: 12px; display: inline-block; line-height: 2; font-weight: bold; color: #333; }
+        #roadviewControl.active { background: #ccc; border: 1px solid #7F818A; }
+        #roadviewControl.active span { background: url(https://t1.daumcdn.net/localimg/localimages/07/mapapidoc/mapworker_on.png) no-repeat; color: #4C4E57; }
+        #close { position: absolute; padding: 6px; top: 10px; right: 10px; cursor: pointer; background: #fff; border-radius: 4px; border: 1px solid #c8c8c8; z-index: 3;}
+        #close .img { display: block; background: url(https://t1.daumcdn.net/localimg/localimages/07/mapapidoc/rv_close.png) no-repeat; width: 14px; height: 14px; }    
+        
+        #menu_rule { position: absolute; top: 15px; left: 15px; padding: 6px; background: rgba(255, 255, 255, 0.9); z-index: 2; border: 1px solid #919191; border-radius: 5px; display: flex; gap: 5px; }
+        #menu_rule button { border: none; padding: 6px 10px; border-radius: 4px; background: #0d6efd; color: #fff; font-size: 12px; cursor: pointer; }
+        #menu_rule button.berror { background-color: #dc3545; }
+
+        /* 🔥 수정모드 버튼 */
         #editModeBtn {
-            position: absolute;
-            top: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            z-index: 10;
-            background: #fff;
-            border: 2px solid #dc3545;
-            color: #dc3545;
-            padding: 8px 24px;
-            font-size: 15px;
-            font-weight: bold;
-            border-radius: 30px;
-            cursor: pointer;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
-            transition: 0.3s;
+            position: absolute; top: 20px; left: 50%; transform: translateX(-50%); z-index: 10;
+            background: #fff; border: 2px solid #dc3545; color: #dc3545; padding: 8px 24px;
+            font-size: 14px; font-weight: bold; border-radius: 30px; cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.3); transition: 0.3s;
         }
-        /* 수정모드 활성화 시 스타일 */
-        #editModeBtn.active {
-            background: #dc3545;
-            color: #fff;
-            border-color: #fff;
-            animation: pulse 1.5s infinite;
-        }
-        @keyframes pulse {
-            0% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.7); }
-            70% { box-shadow: 0 0 0 10px rgba(220, 53, 69, 0); }
-            100% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0); }
+        #editModeBtn.active { background: #dc3545; color: #fff; border-color: #fff; animation: pulse 1.5s infinite; }
+        @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.7); } 70% { box-shadow: 0 0 0 10px rgba(220, 53, 69, 0); } 100% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0); } }
+
+        /* 🔥 소화전 추가 버튼 (수정모드 켤 때만 나타남) */
+        #addMarkerBtn {
+            position: absolute; top: 65px; left: 50%; transform: translateX(-50%); z-index: 10;
+            background: #28a745; border: 2px solid #28a745; color: #fff; padding: 6px 20px;
+            font-size: 13px; font-weight: bold; border-radius: 30px; cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.3); transition: 0.3s;
+            display: none; /* 기본 숨김 */
         }
 
-        /* 우측 데이터 리스트 패널 */
-        #menu_wrap { 
-            position: absolute; top: 15px; right: 15px; bottom: 80px; width: 250px; 
-            padding: 10px; background: rgba(255, 255, 255, 0.95); z-index: 2; 
-            border-radius: 8px; border: 1px solid #919191; overflow-y: auto; box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-        }
+        /* 우측 리스트 박스 */
+        #menu_wrap { position: absolute; top: 15px; right: 15px; bottom: 80px; width: 220px; padding: 10px; background: rgba(255, 255, 255, 0.9); z-index: 2; border-radius: 8px; border: 1px solid #919191; overflow-y: auto; display: block; }
         .list-item { cursor: pointer; padding: 8px 0; border-bottom: 1px solid #eee; font-size: 13px; }
-        .list-item:hover { color: #0d6efd; font-weight: bold; background: #f0f8ff; }
+        .list-item:hover { color: #00a0e9; font-weight: bold; }
+
+        .showlistbox { width: 250px; padding: 10px; font-size: 13px; line-height: 1.5; box-sizing: border-box; text-align: left; }
+        .showlistbox b { font-size: 14px; color: #333; display: inline-block; margin-bottom: 4px; }
+        .label { margin-bottom: 96px; display: flex; font-size: 12px; background: rgba(255,255,255,0.9); padding: 2px 8px; border-radius: 12px; border: 1px solid #ccc; font-weight: bold; }
+        .dotOverlay, .info, .distanceInfo { position: relative; border-radius: 6px; border: 1px solid #ccc; background: #fff; padding: 5px; font-size: 12px; }
+        .number { font-weight: bold; color: #00a0e9; }
         
-        /* 인포윈도우 스타일 */
-        .info-window { width: 220px; padding: 10px; font-size: 13px; box-sizing: border-box; }
-        .info-window b { font-size: 14px; color: #333; display: block; margin-bottom: 8px; border-bottom: 1px solid #ccc; padding-bottom: 4px; }
-        
-        /* 로딩 표시 */
-        #loading { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 999; background: rgba(0,0,0,0.8); color: white; padding: 15px 30px; border-radius: 8px; font-weight: bold; }
-        
-        @media screen and (max-width: 768px) {
-            #menu_wrap { top: auto; bottom: 20px; left: 10px; right: 10px; width: auto; height: 30%; }
-            #editModeBtn { top: 15px; font-size: 13px; padding: 8px 16px; }
+        #loading { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 999; background: rgba(0,0,0,0.8); color: white; padding: 15px 30px; border-radius: 8px; font-weight: bold; text-align:center; line-height:1.5;}
+
+       @media screen and (max-width: 768px) {
+            #container.view_roadview #mapWrapper { width: 100%; height: 50%; }
+            #rvWrapper { width: 100%; height: 50%; top: 50%; left: 0; right: auto; }
+            .mobile_controls_wrapper { position: absolute; bottom: 10px; left: 5px; right: 5px; display: flex; gap: 4px; justify-content: center; flex-wrap: wrap; top: auto; width: auto; height: auto; pointer-events: auto; }
+            .control_group { position: static; left: auto; right: auto; bottom: auto; flex-shrink: 0; }
+            .control_group span { font-size: 12px; padding: 0 8px; height: 28px; line-height: 28px; white-space: nowrap; }
+            #roadviewControl { bottom: 80px; left: auto; right: 10px; width: auto; height: 32px; display: flex; align-items: center; justify-content: center; padding: 0 8px; }
+            #roadviewControl span { background-position: left center; }
+            #menu_wrap { top: auto; bottom: 80px; left: 10px; right: 10px; width: auto; height: 200px; }
+            #menu_rule { top: 10px; left: 10px; }
+            #menu_rule button { padding: 4px 6px; font-size: 11px; }
+            #editModeBtn { top: 15px; font-size: 12px; padding: 6px 16px; }
+            #addMarkerBtn { top: 55px; font-size: 11px; padding: 5px 14px; }
         }
     </style>
 </head>
 <body>
 
-<!-- 로딩창 -->
-<div id="loading">구글 시트에서 데이터를 불러오는 중입니다...</div>
+<div id="loading">구글 시트에서 소화전 데이터를<br>불러오는 중입니다...</div>
 
 <div id="container">
-    <div id="map"></div>
+    <div id="rvWrapper">
+        <div id="roadview" style="width:100%;height:100%;"></div>
+        <div id="close" title="로드뷰닫기" onclick="closeRoadview()"><span class="img"></span></div>
+    </div>
+    <div id="mapWrapper">
+        <div id="map" style="width:100%;height:100%"></div>
+        <div id="roadviewControl" onclick="setRoadviewRoad()"><span>로드뷰</span></div>
+    </div>
     
-    <!-- 중앙 상단 수정모드 버튼 -->
+    <!-- 중앙 상단 버튼 영역 -->
     <div id="editModeBtn" onclick="toggleEditMode()">수정모드 켜기</div>
-    
-    <div id="menu_wrap"></div> <!-- 리스트 자동 생성 영역 -->
+    <div id="addMarkerBtn" onclick="enableAddMode()">➕ 새 소화전 추가</div>
 </div>
 
+<div class="mobile_controls_wrapper">
+    <div class="control_group radius_border ct_map">
+        <span id="btnRoadmap" class="selected_btn" onclick="setMapType('roadmap')">지도</span>
+        <span id="btnSkyview" class="btn" onclick="setMapType('skyview')">스카이뷰</span>
+    </div>
+    <div class="control_group radius_border ct_ground">
+        <span id="btnGround" class="btn" onclick="setOverlayMapTypeId(true)">지적편집도</span>
+        <span id="btnGroundHide" class="selected_btn" onclick="setOverlayMapTypeId(false)">숨기기</span>
+    </div>
+    <div class="control_group radius_border ct_me">
+        <span id="btnCurrentMe" class="btn" onclick="mapCurrentPosition2()">내위치</span>
+        <span id="btnCurrentHideMe" class="selected_btn" onclick="mapCurrentPositionHide()">숨기기</span>
+    </div>
+    <div class="control_group radius_border ct_list">
+        <span id="btnTitleList" class="selected_btn" onclick="toggleShowList(true)">목록</span>
+        <span id="btnTitleListHide" class="btn" onclick="toggleShowList(false)">숨기기</span>
+    </div>
+</div>
+
+<div id="menu_rule">   
+    <button id='btnMARKER' onclick="rule_line()">거리</button>
+    <button id='btnPOLYLINE' onclick="rule_poly()">면적</button>
+    <button id='btnARROW' onclick="rule_circle()">반경</button>    
+    <button class="berror" onclick="RulerRemove()">초기화</button>
+</div>
+
+<div id="menu_wrap"></div>
+
 <script>
-// ★★★ 여기에 1단계에서 복사한 구글 앱스 스크립트 웹 앱 URL을 넣으세요 ★★★
-var GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz0j-6YyvBGiB_ss9qqkBPPkrdpMCZqN1MRQi95tKBoFBQyw6ZVdlZQEMNj636_dTSDvA/exec";
+Kakao.init('8716aeaad27b0f020a25063da87bd5de'); 
 
-// 지도 초기화
+var GOOGLE_SCRIPT_URL = "https://script.google.com/macros/library/d/14nYvkSW9JEqQWpgw0BSTrgNR54RYDE1CnmtcFfraqVEqSGJsaE7-SEbZ/7";
+
+var Navi_Imgsrc = "";
+var is_mobile = false;
+var UserAgent = navigator.userAgent;
+if (UserAgent.match(/iPhone|iPod|iPad|Android|Windows CE|BlackBerry|Symbian|Windows Phone|webOS|Opera Mini|Opera Mobi|POLARIS|IEMobile|lgtelecom|nokia|SonyEricsson/i) || UserAgent.match(/LG|SAMSUNG|Samsung/)) {
+    is_mobile = true;
+    Navi_Imgsrc = "<img src='https://blog.kakaocdn.net/dn/n32AT/btspnjHn5oH/roFNyJ3MjERPumDVr33sF1/navi.png?attach=1&knm=img.png' width='40' style='margin-bottom:5px;'><br>";
+}
+
 var mapContainer = document.getElementById('map');
-var mapOption = { center: new kakao.maps.LatLng(34.76014841, 127.661568), level: 5 };
+var mapCenter = new kakao.maps.LatLng(34.76014841, 127.661568); 
+var mapOption = { center: mapCenter, level: 5 };
 var map = new kakao.maps.Map(mapContainer, mapOption);
-var infowindow = new kakao.maps.InfoWindow({ zIndex: 1, removable: true });
 
-var markers = [];      
+var clusterer = new kakao.maps.MarkerClusterer({
+    map: map, averageCenter: true, minLevel: 6, disableClickZoom: false
+});
+
+var rvContainer = document.getElementById('roadview');
+var rv = new kakao.maps.Roadview(rvContainer); 
+var rvClient = new kakao.maps.RoadviewClient(); 
+var zoomControl = new kakao.maps.ZoomControl(); 
+map.addControl(zoomControl, kakao.maps.ControlPosition.RIGHT);
+
+var markers = [], customOverlays = [], infowindows = [];
+var myMarker = null;
 var hydrantData = [];  
-var isEditMode = false; // 수정모드 상태 변수
+var isEditMode = false;
+var isAddMode = false; // 추가 모드 판별용
 
 // 1. 구글 시트 데이터 로드
 function loadData() {
+    document.getElementById('loading').style.display = 'block';
     fetch(GOOGLE_SCRIPT_URL)
         .then(response => response.json())
         .then(data => {
@@ -105,12 +182,11 @@ function loadData() {
             renderMapAndList();
         })
         .catch(error => {
-            document.getElementById('loading').innerText = "데이터 로드 실패!";
+            document.getElementById('loading').innerHTML = "데이터 로드 실패!";
             console.error('Error:', error);
         });
 }
 
-// 2. 지도 마커 및 리스트 렌더링
 function renderMapAndList() {
     var menuWrap = document.getElementById('menu_wrap');
     menuWrap.innerHTML = ""; 
@@ -118,133 +194,387 @@ function renderMapAndList() {
     var imageSize = new kakao.maps.Size(25, 28);
     var imageOption = {offset: new kakao.maps.Point(12, 28)};
 
+    clusterer.clear(); 
+    markers = [];
+    customOverlays.forEach(overlay => overlay.setMap(null));
+    customOverlays = [];
+
     hydrantData.forEach(function(item) {
-        
-        // ★★★ 시트에서 가져온 이미지명으로 URL 동적 생성 (fs1~fs10) ★★★
-        var imgName = item.img ? item.img : "fs1"; // 값이 없으면 fs1
+        var imgName = item.img ? item.img : "fs1"; 
         var imgSrc = "https://worl90.github.io/jack/" + imgName + ".png";
         var markerImage = new kakao.maps.MarkerImage(imgSrc, imageSize, imageOption);
-
+        
         var position = new kakao.maps.LatLng(item.lat, item.lng);
         var marker = new kakao.maps.Marker({
-            map: map,
             position: position,
-            image: markerImage, // ★★★ 개별 이미지 적용 ★★★
-            draggable: false // 초기엔 드래그 불가
+            image: markerImage,
+            draggable: isEditMode // 현재 편집모드 상태에 맞게 드래그 설정
         });
-        
         marker.hydrantId = item.id;
         markers.push(marker);
 
-        // 기본 클릭 이벤트 (정보창 띄우기)
-        kakao.maps.event.addListener(marker, 'click', function() {
-            var content = `
-                <div class="info-window">
-                    <b>${item.id}. ${item.title}</b>
-                    <div style="font-size:12px; color:#555;">${item.desc}</div>
-                    <div style="margin-top:5px; font-size:11px; color:#0d6efd;">상단 '수정모드'를 켜고 드래그하면 위치가 저장됩니다.</div>
+        var customOverlay = new kakao.maps.CustomOverlay({
+            clickable: false, position: position, content: '<div class="label">' + item.title + '</div>', xAnchor: 0.5, yAnchor: -0.2, zIndex:-1
+        });
+        customOverlay.setMap(map);
+        customOverlays.push(customOverlay);
+
+        var naviHtml = "";
+        if (is_mobile) {
+            naviHtml = `<a id="navi" href="javascript:navi2('${item.title}', ${item.lat}, ${item.lng});">${Navi_Imgsrc}</a>`;
+        }
+        var content = `
+            <div class="showlistbox">
+                ${naviHtml}
+                <b>${item.id}. ${item.title}</b>
+                <div style="font-size:12px; color:#555;">${item.desc}</div>
+                <div style="margin-top:8px; padding-top:6px; border-top:1px dashed #ccc; font-size:11px; color:#dc3545; font-weight:bold;">
+                    ※ 상단 '수정모드 켜기' 후 마커를 드래그하면 위치가 저장됩니다.
                 </div>
-            `;
-            infowindow.setContent(content);
+            </div>
+        `;
+        var infowindow = new kakao.maps.InfoWindow({ removable: true, content: content });
+        infowindows.push(infowindow);
+
+        kakao.maps.event.addListener(marker, 'click', function() {
             infowindow.open(map, marker);
         });
 
-        // 🚨 드래그 시작 시 원본 위치 저장
         var originalPos;
         kakao.maps.event.addListener(marker, 'dragstart', function() {
-            infowindow.close(); // 드래그 시작하면 정보창 닫기
+            infowindow.close(); 
             originalPos = marker.getPosition();
         });
 
-        // 🚨 드래그 종료 시 업데이트 확인 및 전송
         kakao.maps.event.addListener(marker, 'dragend', function() {
             var newPos = marker.getPosition();
-            
-            if(confirm(`[${item.title}]의 위치를 여기로 변경하시겠습니까?`)) {
-                // 구글 시트로 위치 전송
-                updateDataDirectly(item.id, newPos.getLat(), newPos.getLng(), marker, originalPos);
+            if(confirm(`[${item.title}]의 위치를 변경하시겠습니까?`)) {
+                updateDataDirectly(item.id, newPos.getLat(), newPos.getLng(), marker, originalPos, customOverlay);
             } else {
-                // 취소 시 원래 위치로 복귀
                 marker.setPosition(originalPos);
             }
         });
 
-        // 리스트 항목 생성
         var div = document.createElement('div');
         div.className = 'list-item';
         div.innerHTML = `${item.id}. ${item.title}`;
         div.onclick = function() {
-            map.setCenter(position);
-            map.setLevel(3);
-            kakao.maps.event.trigger(marker, 'click');
+            setCenter(item.lat, item.lng);
+            infowindow.open(map, marker);
         };
         menuWrap.appendChild(div);
     });
+
+    clusterer.addMarkers(markers);
 }
-// 3. 수정모드 ON/OFF 토글 (비밀번호 1234)
+
+kakao.maps.event.addListener(map, 'zoom_changed', function() {
+    var level = map.getLevel();
+    if (level >= 6) { 
+        customOverlays.forEach(overlay => overlay.setMap(null)); 
+    } else {
+        customOverlays.forEach(overlay => overlay.setMap(map));  
+    }
+});
+
+// 2. 수정모드 및 데이터 전송
 window.toggleEditMode = function() {
     var btn = document.getElementById('editModeBtn');
-    
+    var addBtn = document.getElementById('addMarkerBtn');
+
     if(!isEditMode) {
         var pw = prompt("관리자 비밀번호를 입력하세요.");
         if(pw === "1234") {
             isEditMode = true;
             btn.classList.add('active');
-            btn.innerText = "수정모드 작동중 (마커 이동 가능)";
-            
-            // 모든 마커를 드래그 가능하게 변경
+            btn.innerText = "수정모드 작동중 (마커 드래그 가능)";
+            addBtn.style.display = 'block'; // 새 소화전 추가 버튼 나타남
             markers.forEach(m => m.setDraggable(true));
-            alert("수정모드가 켜졌습니다. 마커를 꾹 눌러 이동시켜보세요.");
+            alert("수정모드가 켜졌습니다.\n마커를 꾹 눌러 이동시키거나, [위치 추가] 버튼을 누르세요.");
         } else if (pw !== null) {
             alert("비밀번호가 일치하지 않습니다.");
         }
     } else {
         isEditMode = false;
+        cancelAddMode();
         btn.classList.remove('active');
         btn.innerText = "수정모드 켜기";
-        
-        // 모든 마커 드래그 금지
+        addBtn.style.display = 'none'; // 새 소화전 추가 버튼 숨김
         markers.forEach(m => m.setDraggable(false));
     }
 };
 
-// 4. 구글 시트로 변경된 좌표 쏘기 (백그라운드 통신)
-function updateDataDirectly(id, lat, lng, markerObj, originalPos) {
+// ==========================================
+// ★ [신규] 지도 클릭으로 새 소화전 추가 기능
+// ==========================================
+window.enableAddMode = function() {
+    isAddMode = true;
+    var addBtn = document.getElementById('addMarkerBtn');
+    addBtn.innerText = "지도의 추가할 위치를 터치(클릭)하세요...";
+    addBtn.style.background = "#ffc107";
+    addBtn.style.borderColor = "#ffc107";
+};
+
+window.cancelAddMode = function() {
+    isAddMode = false;
+    var addBtn = document.getElementById('addMarkerBtn');
+    addBtn.innerText = "➕ 새 소화전 추가";
+    addBtn.style.background = "#28a745";
+    addBtn.style.borderColor = "#28a745";
+};
+
+// 지도를 클릭했을 때 (추가 모드일 경우에만 작동)
+kakao.maps.event.addListener(map, 'click', function(mouseEvent) {
+    if (isAddMode) {
+        var lat = mouseEvent.latLng.getLat();
+        var lng = mouseEvent.latLng.getLng();
+        
+        var newId = prompt("1. 새로운 소화전의 [고유 번호]를 입력하세요. (예: 1500)");
+        if(!newId) { cancelAddMode(); return; }
+        
+        var newTitle = prompt("2. [소화전 명칭]을 입력하세요.\n(예: B-가-학동-999호)");
+        if(!newTitle) { cancelAddMode(); return; }
+        
+        var newDesc = prompt("3. [상세 주소 및 설명]을 입력하세요.");
+        if(newDesc === null) newDesc = "";
+        
+        var newImg = prompt("4. [이미지 파일명]을 입력하세요. (fs1 ~ fs10)\n*입력하지 않으면 기본값 fs1이 적용됩니다.", "fs1");
+        if(!newImg) newImg = "fs1";
+
+        insertNewHydrant(newId, newTitle, lat, lng, newDesc, newImg);
+        cancelAddMode();
+    }
+});
+
+// 새 소화전 구글 시트로 전송 (Insert)
+function insertNewHydrant(id, title, lat, lng, desc, img) {
     var loadingLayer = document.getElementById('loading');
-    loadingLayer.innerText = "구글 시트에 저장 중입니다...";
+    loadingLayer.innerHTML = "구글 시트에 소화전 등록 중...";
     loadingLayer.style.display = 'block';
 
     fetch(GOOGLE_SCRIPT_URL, {
         method: 'POST',
         headers: { "Content-Type": "text/plain;charset=utf-8" },
-        body: JSON.stringify({
-            action: "update",
-            id: id,
-            lat: lat,
-            lng: lng
-        })
+        body: JSON.stringify({ action: "insert", id: id, title: title, lat: lat, lng: lng, desc: desc, img: img })
+    })
+    .then(res => res.json())
+    .then(result => {
+        if(result.status === "success") {
+            alert("성공적으로 등록되었습니다.");
+            loadData(); // 등록 성공 시 지도 화면을 즉시 최신화 (새 마커 띄우기)
+        } else {
+            loadingLayer.style.display = 'none';
+            alert("등록 실패: " + result.message);
+        }
+    })
+    .catch(err => {
+        loadingLayer.style.display = 'none';
+        alert("통신 오류가 발생했습니다.");
+        console.error(err);
+    });
+}
+
+// 기존 마커 위치 수정 전송 (Update)
+function updateDataDirectly(id, lat, lng, markerObj, originalPos, overlayObj) {
+    var loadingLayer = document.getElementById('loading');
+    loadingLayer.innerHTML = "구글 시트에 변경사항 저장 중...";
+    loadingLayer.style.display = 'block';
+
+    fetch(GOOGLE_SCRIPT_URL, {
+        method: 'POST',
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({ action: "update", id: id, lat: lat, lng: lng })
     })
     .then(res => res.json())
     .then(result => {
         loadingLayer.style.display = 'none';
         if(result.status === "success") {
-            alert("구글 스프레드시트에 실시간으로 저장되었습니다.");
+            alert("위치 변경이 완료되었습니다.");
+            overlayObj.setPosition(new kakao.maps.LatLng(lat, lng)); 
         } else {
             alert("저장 실패: " + result.message);
-            markerObj.setPosition(originalPos); // 실패 시 원위치
+            markerObj.setPosition(originalPos);
         }
     })
     .catch(err => {
         loadingLayer.style.display = 'none';
         alert("통신 오류가 발생하여 원위치됩니다.");
-        markerObj.setPosition(originalPos); // 통신 오류 시 원위치
+        markerObj.setPosition(originalPos);
         console.error(err);
     });
 }
 
-// 페이지 로드 시 실행
 window.onload = loadData;
-</script>
 
+// ==========================================
+// 기타 컨트롤 및 그리기 기능 원본 유지
+// ==========================================
+function setMapType(maptype) { 
+    if (maptype === 'roadmap') {
+        map.setMapTypeId(kakao.maps.MapTypeId.ROADMAP);  
+        document.getElementById('btnRoadmap').className = 'selected_btn';
+        document.getElementById('btnSkyview').className = 'btn';      
+    } else {
+        map.setMapTypeId(kakao.maps.MapTypeId.HYBRID);  
+        document.getElementById('btnSkyview').className = 'selected_btn';
+        document.getElementById('btnRoadmap').className = 'btn';        
+    }
+}
+function setOverlayMapTypeId(isActive) {
+    if(isActive) {
+        map.addOverlayMapTypeId(kakao.maps.MapTypeId.USE_DISTRICT);        
+        document.getElementById('btnGround').className = 'selected_btn';
+        document.getElementById('btnGroundHide').className = 'btn';     
+    } else {
+        map.removeOverlayMapTypeId(kakao.maps.MapTypeId.USE_DISTRICT);  
+        document.getElementById('btnGround').className = 'btn';
+        document.getElementById('btnGroundHide').className = 'selected_btn';  
+    }
+} 
+function toggleShowList(isShow) {
+    var menuWrap = document.getElementById('menu_wrap');
+    if (isShow) {
+        menuWrap.style.display = 'block';
+        document.getElementById('btnTitleList').className = 'selected_btn';
+        document.getElementById('btnTitleListHide').className = 'btn';      
+    } else {
+        menuWrap.style.display = 'none';
+        document.getElementById('btnTitleList').className = 'btn';
+        document.getElementById('btnTitleListHide').className = 'selected_btn';      
+    }
+}  
+function mapCurrentPosition2(){
+    if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(function(pos) {
+            var locPosition = new kakao.maps.LatLng(pos.coords.latitude, pos.coords.longitude);
+            if(!myMarker) {
+                var mImage = new kakao.maps.MarkerImage("/map/pin_me.png", new kakao.maps.Size(56, 49), {offset: new kakao.maps.Point(28, 49)});
+                myMarker = new kakao.maps.Marker({ map: map, position: locPosition, title : "내위치" });
+            } else {
+                myMarker.setPosition(locPosition);
+            }
+            myMarker.setVisible(true);
+            map.setCenter(locPosition);
+            
+            document.getElementById('btnCurrentMe').className = 'selected_btn';
+            document.getElementById('btnCurrentHideMe').className = 'btn';     
+        }, function() { alert("위치 정보를 가져올 수 없습니다."); });
+    }
+}
+function mapCurrentPositionHide(){
+    if(myMarker) myMarker.setVisible(false);
+    document.getElementById('btnCurrentMe').className = 'btn';
+    document.getElementById('btnCurrentHideMe').className = 'selected_btn';     
+}
+function navi2(m_name, p_m_y, p_m_x) {
+    Kakao.Navi.start({ name: m_name, x: parseFloat(p_m_x), y: parseFloat(p_m_y), coordType: 'wgs84' });
+}
+function setCenter(Lat, Lng) {
+    if (Lat == null) return;
+    var moveLatLon = new kakao.maps.LatLng(Lat, Lng);
+    map.panTo(moveLatLon);
+    var circle = new kakao.maps.Circle({ center: moveLatLon, radius: 100, strokeWeight: 1, strokeColor: '#ffa500', strokeOpacity: 1, strokeStyle: 'dashed', fillColor: '#FF0000', fillOpacity: 0.3 });
+    circle.setMap(map);
+    setTimeout(function () { circle.setMap(null); }, 2000);
+}
+
+// 로드뷰
+var overlayOn = false;
+var rvMarkImage = new kakao.maps.MarkerImage('https://t1.daumcdn.net/localimg/localimages/07/mapapidoc/roadview_wk.png', new kakao.maps.Size(35,39), { offset: new kakao.maps.Point(14, 39) });
+var rvMarker = new kakao.maps.Marker({ image : rvMarkImage, position: mapCenter, draggable: true });
+kakao.maps.event.addListener(rv, 'position_changed', function() { var rvPosition = rv.getPosition(); map.setCenter(rvPosition); if(overlayOn) rvMarker.setPosition(rvPosition); });
+kakao.maps.event.addListener(rvMarker, 'dragend', function() { toggleRoadview(rvMarker.getPosition()); });
+kakao.maps.event.addListener(map, 'click', function(mouseEvent){ if(!overlayOn) return; rvMarker.setPosition(mouseEvent.latLng); toggleRoadview(mouseEvent.latLng); });
+function toggleRoadview(position){ rvClient.getNearestPanoId(position, 50, function(panoId) { if (panoId === null) { toggleMapWrapper(true, position); } else { toggleMapWrapper(false, position); rv.setPanoId(panoId, position); } }); }
+function toggleMapWrapper(active, position) {
+    var container = document.getElementById('container');
+    if (active) { container.className = ''; setTimeout(function(){ map.relayout(); map.setCenter(position); }, 300);
+    } else { if (container.className.indexOf('view_roadview') === -1) { container.className = 'view_roadview'; setTimeout(function(){ map.relayout(); map.setCenter(position); }, 300); } }
+}
+function setRoadviewRoad() {
+    var control = document.getElementById('roadviewControl');
+    if (control.className.indexOf('active') === -1) { control.className = 'active'; overlayOn = true; map.addOverlayMapTypeId(kakao.maps.MapTypeId.ROADVIEW); rvMarker.setMap(map); rvMarker.setPosition(map.getCenter()); toggleRoadview(map.getCenter());
+    } else { control.className = ''; overlayOn = false; map.removeOverlayMapTypeId(kakao.maps.MapTypeId.ROADVIEW); rvMarker.setMap(null); }
+}
+function closeRoadview() { toggleMapWrapper(true, rvMarker.getPosition()); }
+
+// 그리기 기능 
+var drawingFlagCir = false, centerPosition, drawingCircle, drawingLineC, drawingOverlay;
+var circles = [], clickLine, moveLine, drawingFlagLine = false, distanceOverlay, dots = [];
+var drawingFlagPoly = false, drawingPolygon, polygon, areaOverlay;
+var clickHandlerRule, mousemoveHandlerRule, rightclickHandlerRule;
+
+function setRuleClear() { kakao.maps.event.removeListener(map, 'click', clickHandlerRule); kakao.maps.event.removeListener(map, 'mousemove', mousemoveHandlerRule); kakao.maps.event.removeListener(map, 'rightclick', rightclickHandlerRule); }
+function rule_circle() {
+    setRuleClear();
+    clickHandlerRule = function(mouseEvent) {   
+        if (!drawingFlagCir) { removeCircles(); drawingFlagCir = true; centerPosition = mouseEvent.latLng; 
+            if (!drawingLineC) { drawingLineC = new kakao.maps.Polyline({ strokeWeight: 3, strokeColor: '#00a0e9', strokeOpacity: 1, strokeStyle: 'solid' });  }
+            if (!drawingCircle) { drawingCircle = new kakao.maps.Circle({ strokeWeight: 1, strokeColor: '#00a0e9', strokeOpacity: 0.1, strokeStyle: 'solid', fillColor: '#00a0e9', fillOpacity: 0.2 }); }
+            if (!drawingOverlay) { drawingOverlay = new kakao.maps.CustomOverlay({ xAnchor: 0, yAnchor: 0, zIndex: 1 }); } }
+    };
+    kakao.maps.event.addListener(map, 'click', clickHandlerRule);
+    mousemoveHandlerRule = function (mouseEvent) {
+        if (drawingFlagCir) { var mousePosition = mouseEvent.latLng; var linePath = [centerPosition, mousePosition]; drawingLineC.setPath(linePath); var length = drawingLineC.getLength();
+            if(length > 0) { drawingCircle.setOptions({ center : centerPosition, radius: length }); var radius = Math.round(drawingCircle.getRadius()); var content = '<div class="info">반경 <span class="number">' + radius + '</span>m</div>'; drawingOverlay.setPosition(mousePosition); drawingOverlay.setContent(content); drawingCircle.setMap(map); drawingLineC.setMap(map); drawingOverlay.setMap(map);
+            } else { drawingCircle.setMap(null); drawingLineC.setMap(null); drawingOverlay.setMap(null); } }     
+    };
+    kakao.maps.event.addListener(map, 'mousemove', mousemoveHandlerRule);
+    rightclickHandlerRule = function(mouseEvent) {    
+        if (drawingFlagCir) { var rClickPosition = mouseEvent.latLng; var polyline = new kakao.maps.Polyline({ path: [centerPosition, rClickPosition], strokeWeight: 3, strokeColor: '#00a0e9', strokeOpacity: 1, strokeStyle: 'solid' }); var circle = new kakao.maps.Circle({ center : centerPosition, radius: polyline.getLength(), strokeWeight: 1, strokeColor: '#00a0e9', strokeOpacity: 0.1, strokeStyle: 'solid', fillColor: '#00a0e9', fillOpacity: 0.2 }); var radius = Math.round(circle.getRadius()); var content = getTimeHTML_C(radius); var radiusOverlay = new kakao.maps.CustomOverlay({ content: content, position: rClickPosition, xAnchor: 0, yAnchor: 0, zIndex: 1 });  circle.setMap(map); polyline.setMap(map); radiusOverlay.setMap(map); circles.push({ 'polyline' : polyline, 'circle' : circle, 'overlay' : radiusOverlay }); drawingFlagCir = false; centerPosition = null; drawingCircle.setMap(null); drawingLineC.setMap(null); drawingOverlay.setMap(null); }
+    };   
+    kakao.maps.event.addListener(map, 'rightclick', rightclickHandlerRule);
+}
+function removeCircles() { for (var i = 0; i < circles.length; i++) { circles[i].circle.setMap(null); circles[i].polyline.setMap(null); circles[i].overlay.setMap(null); } circles = []; }
+function getTimeHTML_C(distance) { var walkkTime = distance / 67 | 0; var walkHour = '', walkMin = ''; if (walkkTime > 60) walkHour = '<span class="number">' + Math.floor(walkkTime / 60) + '</span>시간 '; walkMin = '<span class="number">' + walkkTime % 60 + '</span>분'; var bycicleTime = distance / 227 | 0; var bycicleHour = '', bycicleMin = ''; if (bycicleTime > 60) bycicleHour = '<span class="number">' + Math.floor(bycicleTime / 60) + '</span>시간 '; bycicleMin = '<span class="number">' + bycicleTime % 60 + '</span>분'; return '<ul class="info"><span>총거리</span><span class="number">' + distance + '</span>m <span >도보</span>' + walkHour + walkMin + ' <span >자전거</span>' + bycicleHour + bycicleMin + '</ul>'; }
+
+function rule_line() {
+    setRuleClear();
+    clickHandlerRule = function(mouseEvent) {    
+        var clickPosition = mouseEvent.latLng;
+        if (!drawingFlagLine) { drawingFlagLine = true; deleteClickLine(); deleteDistnce(); deleteCircleDot(); clickLine = new kakao.maps.Polyline({ map: map, path: [clickPosition], strokeWeight: 3, strokeColor: '#db4040', strokeOpacity: 1, strokeStyle: 'solid' }); moveLine = new kakao.maps.Polyline({ strokeWeight: 3, strokeColor: '#db4040', strokeOpacity: 0.5, strokeStyle: 'solid' }); displayCircleDot(clickPosition, 0);
+        } else { var path = clickLine.getPath(); path.push(clickPosition); clickLine.setPath(path); var distance = Math.round(clickLine.getLength()); displayCircleDot(clickPosition, distance); }
+    };
+    kakao.maps.event.addListener(map, 'click', clickHandlerRule);
+    mousemoveHandlerRule = function (mouseEvent) {
+        if (drawingFlagLine){ var mousePosition = mouseEvent.latLng; var path = clickLine.getPath(); var movepath = [path[path.length-1], mousePosition]; moveLine.setPath(movepath); moveLine.setMap(map); var distance = Math.round(clickLine.getLength() + moveLine.getLength()); var content = '<div class="dotOverlay distanceInfo">총거리 <span class="number">' + distance + '</span>m</div>'; showDistance(content, mousePosition); }              
+    };
+    kakao.maps.event.addListener(map, 'mousemove', mousemoveHandlerRule);                  
+    rightclickHandlerRule = function(mouseEvent) {    
+        if (drawingFlagLine) { moveLine.setMap(null); moveLine = null; var path = clickLine.getPath(); if (path.length > 1) { if (dots[dots.length-1].distance) { dots[dots.length-1].distance.setMap(null); dots[dots.length-1].distance = null; } var distance = Math.round(clickLine.getLength()); var content = getTimeHTML_L(distance); showDistance(content, path[path.length-1]); } else { deleteClickLine(); deleteCircleDot(); deleteDistnce(); } drawingFlagLine = false; }  
+    };
+    kakao.maps.event.addListener(map, 'rightclick', rightclickHandlerRule);
+    function deleteClickLine() { if (clickLine) { clickLine.setMap(null); clickLine = null; } }
+    function showDistance(content, position) { if (distanceOverlay) { distanceOverlay.setPosition(position); distanceOverlay.setContent(content); } else { distanceOverlay = new kakao.maps.CustomOverlay({ map: map, content: content, position: position, xAnchor: 0, yAnchor: 0, zIndex: 3 }); } }
+    function deleteDistnce () { if (distanceOverlay) { distanceOverlay.setMap(null); distanceOverlay = null; } }
+    function displayCircleDot(position, distance) { var circleOverlay = new kakao.maps.CustomOverlay({ content: '<span class="dot"></span>', position: position, zIndex: 1 }); circleOverlay.setMap(map); var distanceOverlay = null; if (distance > 0) { distanceOverlay = new kakao.maps.CustomOverlay({ content: '<div class="dotOverlay">거리 <span class="number">' + distance + '</span>m</div>', position: position, yAnchor: 1, zIndex: 2 }); distanceOverlay.setMap(map); } dots.push({circle:circleOverlay, distance: distanceOverlay}); }
+    function deleteCircleDot() { for (var i = 0; i < dots.length; i++ ){ if (dots[i].circle) dots[i].circle.setMap(null); if (dots[i].distance) dots[i].distance.setMap(null); } dots = []; }
+    function getTimeHTML_L(distance) { var walkkTime = distance / 67 | 0; var walkHour = '', walkMin = ''; if (walkkTime > 60) walkHour = '<span class="number">' + Math.floor(walkkTime / 60) + '</span>시간 '; walkMin = '<span class="number">' + walkkTime % 60 + '</span>분'; var bycicleTime = distance / 227 | 0; var bycicleHour = '', bycicleMin = ''; if (bycicleTime > 60) bycicleHour = '<span class="number">' + Math.floor(bycicleTime / 60) + '</span>시간 '; bycicleMin = '<span class="number">' + bycicleTime % 60 + '</span>분'; return '<ul class="dotOverlay distanceInfo"><span >총거리</span><span class="number">' + distance + '</span>m <span >도보</span>' + walkHour + walkMin + ' <span >자전거</span>' + bycicleHour + bycicleMin + '</ul>'; }
+}
+
+function rule_poly() {
+    setRuleClear();
+    clickHandlerRule = function(mouseEvent) {    
+        var clickPosition = mouseEvent.latLng; 
+        if (!drawingFlagPoly) { drawingFlagPoly = true; if (polygon) { polygon.setMap(null); polygon = null; } if (areaOverlay) { areaOverlay.setMap(null); areaOverlay = null; } drawingPolygon = new kakao.maps.Polygon({ map: map, path: [clickPosition], strokeWeight: 3, strokeColor: '#00a0e9', strokeOpacity: 1, strokeStyle: 'solid', fillColor: '#00a0e9', fillOpacity: 0.2 }); polygon = new kakao.maps.Polygon({ path: [clickPosition], strokeWeight: 3, strokeColor: '#00a0e9', strokeOpacity: 1, strokeStyle: 'solid', fillColor: '#00a0e9', fillOpacity: 0.2 });
+        } else { var drawingPath = drawingPolygon.getPath(); drawingPath.push(clickPosition); drawingPolygon.setPath(drawingPath); var path = polygon.getPath(); path.push(clickPosition); polygon.setPath(path); }   
+    }; 
+    kakao.maps.event.addListener(map, 'click', clickHandlerRule);
+    mousemoveHandlerRule = function (mouseEvent) { if (drawingFlagPoly){ var mousePosition = mouseEvent.latLng; var path = drawingPolygon.getPath(); if (path.length > 1) path.pop(); path.push(mousePosition); drawingPolygon.setPath(path); } };     
+    kakao.maps.event.addListener(map, 'mousemove', mousemoveHandlerRule);
+    rightclickHandlerRule = function(mouseEvent) {    
+        if (drawingFlagPoly) { drawingPolygon.setMap(null); drawingPolygon = null; var path = polygon.getPath(); if (path.length > 2) { polygon.setMap(map); var area = Math.round(polygon.getArea()); var content = '<div class="info">총면적 <span class="number"> ' + area + '</span> m<sup>2</sup></div>'; areaOverlay = new kakao.maps.CustomOverlay({ map: map, content: content, xAnchor: 0, yAnchor: 0, position: path[path.length-1] }); } else { polygon = null; } drawingFlagPoly = false; }  
+    };
+    kakao.maps.event.addListener(map, 'rightclick', rightclickHandlerRule);
+}
+function RulerRemove(){
+    if (clickLine) { clickLine.setMap(null); clickLine = null; }
+    if (distanceOverlay) { distanceOverlay.setMap(null); distanceOverlay = null; }
+    for ( var i = 0; i < dots.length; i++ ){ if (dots[i].circle) dots[i].circle.setMap(null); if (dots[i].distance) dots[i].distance.setMap(null); } dots = [];
+    if (polygon) { polygon.setMap(null); polygon = null; }
+    if (areaOverlay) { areaOverlay.setMap(null); areaOverlay = null; }
+    removeCircles();
+}
+</script>
 </body>
 </html>
