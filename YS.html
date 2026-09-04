@@ -59,7 +59,19 @@
             font-size: 13px; font-weight: bold; border-radius: 30px; cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.3); transition: 0.3s;
             display: none; /* 기본 숨김 */
         }
-
+<!-- 지역별 필터 버튼 바 (9개 지역 + 전체) -->
+<div id="filter_wrap" style="position: absolute; top: 15px; left: 80px; z-index: 2; background: rgba(255, 255, 255, 0.95); padding: 6px; border-radius: 8px; border: 1px solid #919191; display: flex; gap: 4px; overflow-x: auto; max-width: calc(100% - 170px); box-shadow: 0 2px 4px rgba(0,0,0,0.2); white-space: nowrap;">
+    <button onclick="filterHydrants('전체')" style="padding: 5px 10px; font-size:12px; cursor:pointer; border:none; border-radius:4px; background:#0d6efd; color:#fff; font-weight:bold; flex-shrink:0;">전체</button>
+    <button onclick="filterHydrants('학동')" style="padding: 5px 10px; font-size:12px; cursor:pointer; border-radius:4px; background:#f8f9fa; border:1px solid #ccc; flex-shrink:0;">학동</button>
+    <button onclick="filterHydrants('연등')" style="padding: 5px 10px; font-size:12px; cursor:pointer; border-radius:4px; background:#f8f9fa; border:1px solid #ccc; flex-shrink:0;">연등</button>
+    <button onclick="filterHydrants('여서')" style="padding: 5px 10px; font-size:12px; cursor:pointer; border-radius:4px; background:#f8f9fa; border:1px solid #ccc; flex-shrink:0;">여서</button>
+    <button onclick="filterHydrants('봉산')" style="padding: 5px 10px; font-size:12px; cursor:pointer; border-radius:4px; background:#f8f9fa; border:1px solid #ccc; flex-shrink:0;">봉산</button>
+    <button onclick="filterHydrants('돌산')" style="padding: 5px 10px; font-size:12px; cursor:pointer; border-radius:4px; background:#f8f9fa; border:1px solid #ccc; flex-shrink:0;">돌산</button>
+    <button onclick="filterHydrants('평여')" style="padding: 5px 10px; font-size:12px; cursor:pointer; border-radius:4px; background:#f8f9fa; border:1px solid #ccc; flex-shrink:0;">평여</button>
+    <button onclick="filterHydrants('소라')" style="padding: 5px 10px; font-size:12px; cursor:pointer; border-radius:4px; background:#f8f9fa; border:1px solid #ccc; flex-shrink:0;">소라</button>
+    <button onclick="filterHydrants('정대')" style="padding: 5px 10px; font-size:12px; cursor:pointer; border-radius:4px; background:#f8f9fa; border:1px solid #ccc; flex-shrink:0;">정대</button>
+    <button onclick="filterHydrants('화학')" style="padding: 5px 10px; font-size:12px; cursor:pointer; border-radius:4px; background:#f8f9fa; border:1px solid #ccc; flex-shrink:0;">화학</button>
+</div>
         /* 우측 리스트 박스 */
         #menu_wrap { position: absolute; top: 15px; right: 15px; bottom: 80px; width: 220px; padding: 10px; background: rgba(255, 255, 255, 0.9); z-index: 2; border-radius: 8px; border: 1px solid #919191; overflow-y: auto; display: block; }
         .list-item { cursor: pointer; padding: 8px 0; border-bottom: 1px solid #eee; font-size: 13px; }
