@@ -198,7 +198,30 @@ function loadData() {
         });
 }
 
-function renderMapAndList() {
+// 지역별 필터 실행 함수
+function filterHydrants(keyword) {
+    // 버튼 색상 디자인 동적 변경
+    var buttons = document.querySelectorAll('#filter_wrap button');
+    buttons.forEach(btn => {
+        if(btn.innerText === keyword) {
+            btn.style.background = "#0d6efd";
+            btn.style.color = "#fff";
+            btn.style.border = "none";
+            btn.style.fontWeight = "bold";
+        } else {
+            btn.style.background = "#f8f9fa";
+            btn.style.color = "#333";
+            btn.style.border = "1px solid #ccc";
+            btn.style.fontWeight = "normal";
+        }
+    });
+
+    // 선택한 지역 키워드를 담아 지도/목록 갱신 함수 호출
+    renderMapAndList(keyword);
+}
+
+// 지도 마커 및 리스트 렌더링 (지역 키워드 필터 기능 탑재)
+function renderMapAndList(filterKeyword) {
     var menuWrap = document.getElementById('menu_wrap');
     menuWrap.innerHTML = ""; 
     
@@ -211,6 +234,11 @@ function renderMapAndList() {
     customOverlays = [];
 
     hydrantData.forEach(function(item) {
+        // ★ 명칭(item.title)에 해당 지역 단어가 포함되어 있는지 확인 ('전체'이거나 값이 없으면 모두 통과)
+        if (filterKeyword && filterKeyword !== '전체' && !item.title.includes(filterKeyword)) {
+            return; // 조건에 맞지 않으면 마커와 리스트 생성 스킵
+        }
+
         var imgName = item.img ? item.img : "fs1"; 
         var imgSrc = "https://worl90.github.io/jack/" + imgName + ".png";
         var markerImage = new kakao.maps.MarkerImage(imgSrc, imageSize, imageOption);
@@ -219,7 +247,7 @@ function renderMapAndList() {
         var marker = new kakao.maps.Marker({
             position: position,
             image: markerImage,
-            draggable: isEditMode // 현재 편집모드 상태에 맞게 드래그 설정
+            draggable: isEditMode
         });
         marker.hydrantId = item.id;
         markers.push(marker);
@@ -227,7 +255,10 @@ function renderMapAndList() {
         var customOverlay = new kakao.maps.CustomOverlay({
             clickable: false, position: position, content: '<div class="label">' + item.title + '</div>', xAnchor: 0.5, yAnchor: -0.2, zIndex:-1
         });
-        customOverlay.setMap(map);
+        
+        if (map.getLevel() < 6) {
+            customOverlay.setMap(map);
+        }
         customOverlays.push(customOverlay);
 
         var naviHtml = "";
