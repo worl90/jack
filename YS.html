@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>소화전 위치 지도 (지역 자동생성 완결판)</title>
+    <title>소화전 위치 지도 (하단 버튼 연동 완결판)</title>
     
     <!-- 카카오 지도 SDK & 내비게이션 SDK -->
     <script type="text/javascript" src="//dapi.kakao.com/v2/maps/sdk.js?appkey=8716aeaad27b0f020a25063da87bd5de&libraries=services,clusterer"></script>
@@ -60,10 +60,23 @@
             display: none; 
         }
 
-        /* 우측 리스트 박스 */
-        #menu_wrap { position: absolute; top: 60px; right: 15px; bottom: 80px; width: 220px; padding: 10px; background: rgba(255, 255, 255, 0.9); z-index: 2; border-radius: 8px; border: 1px solid #919191; overflow-y: auto; display: block; }
-        .list-item { cursor: pointer; padding: 8px 0; border-bottom: 1px solid #eee; font-size: 13px; }
-        .list-item:hover { color: #00a0e9; font-weight: bold; }
+        /* 우측 리스트 패널 (하단 목록 버튼으로 제어) */
+        #menu_wrap { 
+            position: absolute; top: 15px; right: 15px; bottom: 80px; width: 260px; 
+            padding: 10px; background: rgba(255, 255, 255, 0.95); z-index: 10; border-radius: 8px; 
+            border: 1px solid #919191; overflow-y: auto; display: block; box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+        }
+        
+        /* 패널 내부 지역 버튼 영역 스타일 */
+        #filter_wrap {
+            display: flex; flex-wrap: wrap; gap: 4px; padding-bottom: 10px; border-bottom: 1px solid #ccc; margin-bottom: 10px;
+        }
+        #filter_wrap button {
+            padding: 4px 8px; font-size: 11px; cursor: pointer; border-radius: 4px; border: 1px solid #ccc; background: #f8f9fa; color: #333;
+        }
+
+        .list-item { cursor: pointer; padding: 8px 4px; border-bottom: 1px solid #eee; font-size: 13px; }
+        .list-item:hover { color: #00a0e9; font-weight: bold; background: #f0f8ff; }
 
         .showlistbox { width: 250px; padding: 10px; font-size: 13px; line-height: 1.5; box-sizing: border-box; text-align: left; }
         .showlistbox b { font-size: 14px; color: #333; display: inline-block; margin-bottom: 4px; }
@@ -81,12 +94,11 @@
             .control_group span { font-size: 12px; padding: 0 8px; height: 28px; line-height: 28px; white-space: nowrap; }
             #roadviewControl { bottom: 80px; left: auto; right: 10px; width: auto; height: 32px; display: flex; align-items: center; justify-content: center; padding: 0 8px; }
             #roadviewControl span { background-position: left center; }
-            #menu_wrap { top: auto; bottom: 80px; left: 10px; right: 10px; width: auto; height: 200px; }
+            #menu_wrap { top: auto; bottom: 80px; left: 10px; right: 10px; width: auto; height: 220px; }
             #menu_rule { top: 10px; left: 10px; }
             #menu_rule button { padding: 4px 6px; font-size: 11px; }
             #editModeBtn { top: 15px; font-size: 12px; padding: 6px 16px; }
             #addMarkerBtn { top: 55px; font-size: 11px; padding: 5px 14px; }
-            #filter_wrap { top: 60px !important; left: 10px !important; max-width: calc(100% - 20px) !important; }
         }
     </style>
 </head>
@@ -108,10 +120,14 @@
     <div id="editModeBtn" onclick="toggleEditMode()">수정모드 켜기</div>
     <div id="addMarkerBtn" onclick="enableAddMode()">➕ 새 소화전 추가</div>
 
-    <!-- 지역별 필터 버튼 바 (자바스크립트가 시트 데이터를 분석해 자동으로 버튼을 채워줍니다) -->
-    <div id="filter_wrap" style="position: absolute; top: 15px; left: 150px; z-index: 2; background: rgba(255, 255, 255, 0.95); padding: 5px; border-radius: 8px; border: 1px solid #919191; display: flex; gap: 4px; overflow-x: auto; max-width: calc(100% - 320px); box-shadow: 0 2px 4px rgba(0,0,0,0.2); white-space: nowrap;">
-        <button onclick="filterHydrants('전체')" style="padding: 4px 8px; font-size:12px; cursor:pointer; border:none; border-radius:4px; background:#0d6efd; color:#fff; font-weight:bold; flex-shrink:0;">전체</button>
-        <!-- 동적 생성 영역 -->
+    <!-- 우측 드롭다운 리스트 패널 (하단 목록/숨기기 버튼과 연동) -->
+    <div id="menu_wrap">
+        <!-- 지역별 필터 버튼 바 자동 생성 영역 -->
+        <div id="filter_wrap">
+            <button onclick="filterHydrants('전체')" style="background:#0d6efd; color:#fff; font-weight:bold; border:none;">전체</button>
+        </div>
+        <!-- 실제 소화전 목록 나열 영역 -->
+        <div id="list_items_container"></div>
     </div>
 </div>
 
@@ -140,8 +156,6 @@
     <button id='btnARROW' onclick="rule_circle()">반경</button>    
     <button class="berror" onclick="RulerRemove()">초기화</button>
 </div>
-
-<div id="menu_wrap"></div>
 
 <script>
 Kakao.init('8716aeaad27b0f020a25063da87bd5de'); 
@@ -176,7 +190,7 @@ var myMarker = null;
 var hydrantData = [];  
 var isEditMode = false;
 var zAddMode = false;
-var currentFilter = '전체'; // 현재 선택된 필터 유지용
+var currentFilter = '전체'; 
 
 // 1. 구글 시트 데이터 로드 및 지역 버튼 자동 생성
 function loadData() {
@@ -187,9 +201,7 @@ function loadData() {
             document.getElementById('loading').style.display = 'none';
             hydrantData = data;
             
-            // ★ [자동화 핵심] 데이터 명칭을 분석하여 상단 필터 버튼 동적 생성
             generateFilterButtons();
-            
             renderMapAndList(currentFilter);
         })
         .catch(error => {
@@ -198,20 +210,18 @@ function loadData() {
         });
 }
 
-// 명칭(예: B-가-학동-216호)에서 지역명을 추출해 상단 버튼 자동 만들기
+// 패널 내부에 지역 필터 버튼 자동 생성
 function generateFilterButtons() {
     var regions = new Set();
     hydrantData.forEach(item => {
         var parts = item.title.split('-');
         if (parts.length >= 3) {
-            // 통상적으로 B-가-[지역명]-번호 구조이므로 3번째 요소를 지역으로 판단 (예: 학동, 봉산 등)
             regions.add(parts[2]);
         }
     });
 
     var filterWrap = document.getElementById('filter_wrap');
-    // '전체' 버튼만 남기고 나머지 기존 동적 버튼은 초기화
-    filterWrap.innerHTML = `<button onclick="filterHydrants('전체')" style="padding: 4px 8px; font-size:12px; cursor:pointer; border:none; border-radius:4px; ${currentFilter==='전체'?'background:#0d6efd; color:#fff; font-weight:bold;':'background:#f8f9fa; color:#333; border:1px solid #ccc;'} flex-shrink:0;">전체</button>`;
+    filterWrap.innerHTML = `<button onclick="filterHydrants('전체')" style="${currentFilter==='전체'?'background:#0d6efd; color:#fff; font-weight:bold; border:none;':'background:#f8f9fa; color:#333; border:1px solid #ccc;'}">전체</button>`;
 
     regions.forEach(region => {
         var isSelected = (currentFilter === region);
@@ -220,7 +230,7 @@ function generateFilterButtons() {
         var btn = document.createElement('button');
         btn.innerText = region;
         btn.setAttribute('onclick', `filterHydrants('${region}')`);
-        btn.style.cssText = `padding: 4px 8px; font-size:12px; cursor:pointer; border-radius:4px; ${btnBg} flex-shrink:0;`;
+        btn.style.cssText = btnBg;
         filterWrap.appendChild(btn);
     });
 }
@@ -246,10 +256,10 @@ function filterHydrants(keyword) {
     renderMapAndList(keyword);
 }
 
-// 지도 마커 및 리스트 렌더링
+// 지도 마커 및 패널 내부 리스트 렌더링
 function renderMapAndList(filterKeyword) {
-    var menuWrap = document.getElementById('menu_wrap');
-    menuWrap.innerHTML = ""; 
+    var listContainer = document.getElementById('list_items_container');
+    listContainer.innerHTML = ""; 
     
     var imageSize = new kakao.maps.Size(25, 28);
     var imageOption = {offset: new kakao.maps.Point(12, 28)};
@@ -329,7 +339,7 @@ function renderMapAndList(filterKeyword) {
             setCenter(item.lat, item.lng);
             infowindow.open(map, marker);
         };
-        menuWrap.appendChild(div);
+        listContainer.appendChild(div);
     });
 
     clusterer.addMarkers(markers);
@@ -467,7 +477,7 @@ function updateDataDirectly(id, lat, lng, markerObj, originalPos, overlayObj) {
 
 window.onload = loadData;
 
-// 기타 컨트롤 및 도구 함수들
+// 기타 컨트롤 함수들
 function setMapType(maptype) { 
     if (maptype === 'roadmap') {
         map.setMapTypeId(kakao.maps.MapTypeId.ROADMAP);  
