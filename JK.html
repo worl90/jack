@@ -83,7 +83,7 @@
 
 <script>
 // ★★★ 여기에 1단계에서 복사한 구글 앱스 스크립트 웹 앱 URL을 넣으세요 ★★★
-var GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxzP6FdxHQ8ZW_XRYLBmh7Npd8CRHK0cLj28FNqOrrnDD7ccpLpb7EfkpiNSYmSdm85Qw/exec";
+var GOOGLE_SCRIPT_URL = "https://script.google.com/macros/library/d/14nYvkSW9JEqQWpgw0BSTrgNR54RYDE1CnmtcFfraqVEqSGJsaE7-SEbZ/5";
 
 // 지도 초기화
 var mapContainer = document.getElementById('map');
@@ -117,14 +117,19 @@ function renderMapAndList() {
     
     var imageSize = new kakao.maps.Size(25, 28);
     var imageOption = {offset: new kakao.maps.Point(12, 28)};
-    var markerImage = new kakao.maps.MarkerImage('https://worl90.github.io/jack/fs1.png', imageSize, imageOption);
 
     hydrantData.forEach(function(item) {
+        
+        // ★★★ 시트에서 가져온 이미지명으로 URL 동적 생성 (fs1~fs10) ★★★
+        var imgName = item.img ? item.img : "fs1"; // 값이 없으면 fs1
+        var imgSrc = "https://worl90.github.io/jack/" + imgName + ".png";
+        var markerImage = new kakao.maps.MarkerImage(imgSrc, imageSize, imageOption);
+
         var position = new kakao.maps.LatLng(item.lat, item.lng);
         var marker = new kakao.maps.Marker({
             map: map,
             position: position,
-            image: markerImage,
+            image: markerImage, // ★★★ 개별 이미지 적용 ★★★
             draggable: false // 초기엔 드래그 불가
         });
         
@@ -176,7 +181,6 @@ function renderMapAndList() {
         menuWrap.appendChild(div);
     });
 }
-
 // 3. 수정모드 ON/OFF 토글 (비밀번호 1234)
 window.toggleEditMode = function() {
     var btn = document.getElementById('editModeBtn');
