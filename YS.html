@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>소화전 위치 지도 (하단 버튼 연동 완결판)</title>
+    <title>소화전 위치 지도 (Cloudflare D1 연동 완결판)</title>
     
     <!-- 카카오 지도 SDK & 내비게이션 SDK -->
     <script type="text/javascript" src="//dapi.kakao.com/v2/maps/sdk.js?appkey=8716aeaad27b0f020a25063da87bd5de&libraries=services,clusterer"></script>
@@ -27,10 +27,10 @@
         .mobile_controls_wrapper { pointer-events: none; z-index: 2; position: absolute; width: 100%; height: 100%; top: 0; left: 0; }
         .control_group { position: absolute; display: flex; overflow: hidden; pointer-events: auto; }
         .control_group span { display: block; width: auto; padding: 0 12px; height: 32px; line-height: 32px; text-align: center; font-size: 13px; cursor: pointer; }
-        .ct_map    { bottom: 20px; left: 5px; }       
-        .ct_ground { bottom: 20px; left: 160px; }     
-        .ct_me     { bottom: 20px; left: 410px; }     
-        .ct_list   { bottom: 20px; right: 22px; }     
+        .ct_map    { bottom: 20px; left: 5px; }        
+        .ct_ground { bottom: 20px; left: 160px; }      
+        .ct_me     { bottom: 20px; left: 410px; }      
+        .ct_list   { bottom: 20px; right: 22px; }      
 
         #roadviewControl { position: absolute; bottom: 20px; left: 320px; width: 65px; height: 25px; padding: 2px; z-index: 2; background: #f7f7f7; border-radius: 4px; border: 1px solid #c8c8c8; cursor: pointer; }
         #roadviewControl span { background: url(https://t1.daumcdn.net/localimg/localimages/07/mapapidoc/mapworker.png) no-repeat; padding-left: 23px; height: 24px; font-size: 12px; display: inline-block; line-height: 2; font-weight: bold; color: #333; }
@@ -52,28 +52,18 @@
         #editModeBtn.active { background: #dc3545; color: #fff; border-color: #fff; animation: pulse 1.5s infinite; }
         @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.7); } 70% { box-shadow: 0 0 0 10px rgba(220, 53, 69, 0); } 100% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0); } }
 
-        /* 소화전 추가 버튼 */
-        #addMarkerBtn {
-            position: absolute; top: 65px; left: 50%; transform: translateX(-50%); z-index: 10;
-            background: #28a745; border: 2px solid #28a745; color: #fff; padding: 6px 20px;
-            font-size: 13px; font-weight: bold; border-radius: 30px; cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.3); transition: 0.3s;
-            display: none; 
-        }
+        /* 소화전 추가 버튼 (새 기능 제외, 위치 수정 기능만 유지) */
+        #addMarkerBtn { display: none; }
 
-        /* 우측 리스트 패널 (하단 목록 버튼으로 제어) */
+        /* 우측 리스트 패널 */
         #menu_wrap { 
             position: absolute; top: 15px; right: 15px; bottom: 80px; width: 260px; 
             padding: 10px; background: rgba(255, 255, 255, 0.95); z-index: 10; border-radius: 8px; 
             border: 1px solid #919191; overflow-y: auto; display: block; box-shadow: 0 4px 8px rgba(0,0,0,0.3);
         }
         
-        /* 패널 내부 지역 버튼 영역 스타일 */
-        #filter_wrap {
-            display: flex; flex-wrap: wrap; gap: 4px; padding-bottom: 10px; border-bottom: 1px solid #ccc; margin-bottom: 10px;
-        }
-        #filter_wrap button {
-            padding: 4px 8px; font-size: 11px; cursor: pointer; border-radius: 4px; border: 1px solid #ccc; background: #f8f9fa; color: #333;
-        }
+        #filter_wrap { display: flex; flex-wrap: wrap; gap: 4px; padding-bottom: 10px; border-bottom: 1px solid #ccc; margin-bottom: 10px; }
+        #filter_wrap button { padding: 4px 8px; font-size: 11px; cursor: pointer; border-radius: 4px; border: 1px solid #ccc; background: #f8f9fa; color: #333; }
 
         .list-item { cursor: pointer; padding: 8px 4px; border-bottom: 1px solid #eee; font-size: 13px; }
         .list-item:hover { color: #00a0e9; font-weight: bold; background: #f0f8ff; }
@@ -98,13 +88,12 @@
             #menu_rule { top: 10px; left: 10px; }
             #menu_rule button { padding: 4px 6px; font-size: 11px; }
             #editModeBtn { top: 15px; font-size: 12px; padding: 6px 16px; }
-            #addMarkerBtn { top: 55px; font-size: 11px; padding: 5px 14px; }
         }
     </style>
 </head>
 <body>
 
-<div id="loading">구글 시트에서 소화전 데이터를<br>불러오는 중입니다...</div>
+<div id="loading">클라우드에서 소화전 데이터를<br>불러오는 중입니다...</div>
 
 <div id="container">
     <div id="rvWrapper">
@@ -116,17 +105,14 @@
         <div id="roadviewControl" onclick="setRoadviewRoad()"><span>로드뷰</span></div>
     </div>
     
-    <!-- 수정모드 및 추가 버튼 -->
+    <!-- 수정모드 버튼 -->
     <div id="editModeBtn" onclick="toggleEditMode()">수정모드 켜기</div>
-    <div id="addMarkerBtn" onclick="enableAddMode()">➕ 새 소화전 추가</div>
 
-    <!-- 우측 드롭다운 리스트 패널 (하단 목록/숨기기 버튼과 연동) -->
+    <!-- 우측 드롭다운 리스트 패널 -->
     <div id="menu_wrap">
-        <!-- 지역별 필터 버튼 바 자동 생성 영역 -->
         <div id="filter_wrap">
             <button onclick="filterHydrants('전체')" style="background:#0d6efd; color:#fff; font-weight:bold; border:none;">전체</button>
         </div>
-        <!-- 실제 소화전 목록 나열 영역 -->
         <div id="list_items_container"></div>
     </div>
 </div>
@@ -160,7 +146,8 @@
 <script>
 Kakao.init('8716aeaad27b0f020a25063da87bd5de'); 
 
-var GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwZiDJtkfNxwlr3x5GiQCZqHs-6g3kvzCyz-EurYJZ03x15aKxHu1iczehRazAHhcGMQA/exec";
+// ★ 수정된 API 주소 (Cloudflare Worker)
+var CLOUDFLARE_API_URL = "https://hydrant-api.90rlaworl.workers.dev/hydrants";
 
 var Navi_Imgsrc = "";
 var is_mobile = false;
@@ -189,14 +176,17 @@ var markers = [], customOverlays = [], infowindows = [];
 var myMarker = null;
 var hydrantData = [];  
 var isEditMode = false;
-var zAddMode = false;
 var currentFilter = '전체'; 
 
-// 1. 구글 시트 데이터 로드 및 지역 버튼 자동 생성
+// 1. Cloudflare DB에서 데이터 로드 (속도 대폭 향상)
 function loadData() {
     document.getElementById('loading').style.display = 'block';
-    fetch(GOOGLE_SCRIPT_URL)
-        .then(response => response.json())
+    
+    fetch(CLOUDFLARE_API_URL)
+        .then(response => {
+            if (!response.ok) throw new Error('API 응답 에러');
+            return response.json();
+        })
         .then(data => {
             document.getElementById('loading').style.display = 'none';
             hydrantData = data;
@@ -205,12 +195,11 @@ function loadData() {
             renderMapAndList(currentFilter);
         })
         .catch(error => {
-            document.getElementById('loading').innerHTML = "데이터 로드 실패!";
+            document.getElementById('loading').innerHTML = "네트워크 연결을 확인해주세요.<br>데이터 로드 실패!";
             console.error('Error:', error);
         });
 }
 
-// 패널 내부에 지역 필터 버튼 자동 생성
 function generateFilterButtons() {
     var regions = new Set();
     hydrantData.forEach(item => {
@@ -235,7 +224,6 @@ function generateFilterButtons() {
     });
 }
 
-// 지역별 필터 실행 함수
 function filterHydrants(keyword) {
     currentFilter = keyword;
     var buttons = document.querySelectorAll('#filter_wrap button');
@@ -252,11 +240,9 @@ function filterHydrants(keyword) {
             btn.style.fontWeight = "normal";
         }
     });
-
     renderMapAndList(keyword);
 }
 
-// 지도 마커 및 패널 내부 리스트 렌더링
 function renderMapAndList(filterKeyword) {
     var listContainer = document.getElementById('list_items_container');
     listContainer.innerHTML = ""; 
@@ -300,13 +286,18 @@ function renderMapAndList(filterKeyword) {
         if (is_mobile) {
             naviHtml = `<a id="navi" href="javascript:navi2('${item.title}', ${item.lat}, ${item.lng});">${Navi_Imgsrc}</a>`;
         }
+        
+        // 상세설명 null 값 처리
+        var detailDesc = (item.detail && item.detail !== "NULL") ? item.detail : "상세설명 없음";
+        
         var content = `
             <div class="showlistbox">
                 ${naviHtml}
                 <b>${item.id}. ${item.title}</b>
                 <div style="font-size:12px; color:#555;">${item.desc}</div>
+                <div style="font-size:12px; color:#333; margin-top:4px;">▶ ${detailDesc}</div>
                 <div style="margin-top:8px; padding-top:6px; border-top:1px dashed #ccc; font-size:11px; color:#dc3545; font-weight:bold;">
-                    ※ 상단 '수정모드 켜기' 후 마커를 드래그하면 위치가 저장됩니다.
+                    ※ 상단 '수정모드 켜기' 후 마커를 드래그하면 위치가 클라우드에 자동 저장됩니다.
                 </div>
             </div>
         `;
@@ -325,7 +316,8 @@ function renderMapAndList(filterKeyword) {
 
         kakao.maps.event.addListener(marker, 'dragend', function() {
             var newPos = marker.getPosition();
-            if(confirm(`[${item.title}]의 위치를 변경하시겠습니까?`)) {
+            if(confirm(`[${item.title}]의 위치를 이 곳으로 수정하시겠습니까?`)) {
+                // ★ Cloudflare DB에 PATCH 요청 (수정된 쿼리)
                 updateDataDirectly(item.id, newPos.getLat(), newPos.getLng(), marker, originalPos, customOverlay);
             } else {
                 marker.setPosition(originalPos);
@@ -357,7 +349,6 @@ kakao.maps.event.addListener(map, 'zoom_changed', function() {
 // 수정모드 토글
 window.toggleEditMode = function() {
     var btn = document.getElementById('editModeBtn');
-    var addBtn = document.getElementById('addMarkerBtn');
 
     if(!isEditMode) {
         var pw = prompt("관리자 비밀번호를 입력하세요.");
@@ -365,105 +356,38 @@ window.toggleEditMode = function() {
             isEditMode = true;
             btn.classList.add('active');
             btn.innerText = "수정모드 작동중 (마커 드래그 가능)";
-            addBtn.style.display = 'block'; 
             markers.forEach(m => m.setDraggable(true));
-            alert("수정모드가 켜졌습니다.\n마커를 꾹 눌러 이동시키거나, [위치 추가] 버튼을 누르세요.");
+            alert("수정모드가 켜졌습니다.\n마커를 꾹 눌러 이동시키면 즉시 클라우드에 저장됩니다.");
         } else if (pw !== null) {
             alert("비밀번호가 일치하지 않습니다.");
         }
     } else {
         isEditMode = false;
-        cancelAddMode();
         btn.classList.remove('active');
         btn.innerText = "수정모드 켜기";
-        addBtn.style.display = 'none'; 
         markers.forEach(m => m.setDraggable(false));
     }
 };
 
-window.enableAddMode = function() {
-    zAddMode = true;
-    var addBtn = document.getElementById('addMarkerBtn');
-    addBtn.innerText = "지도의 추가할 위치를 터치(클릭)하세요...";
-    addBtn.style.background = "#ffc107";
-    addBtn.style.borderColor = "#ffc107";
-};
-
-window.cancelAddMode = function() {
-    zAddMode = false;
-    var addBtn = document.getElementById('addMarkerBtn');
-    addBtn.innerText = "➕ 새 소화전 추가";
-    addBtn.style.background = "#28a745";
-    addBtn.style.borderColor = "#28a745";
-};
-
-kakao.maps.event.addListener(map, 'click', function(mouseEvent) {
-    if (zAddMode) {
-        var lat = mouseEvent.latLng.getLat();
-        var lng = mouseEvent.latLng.getLng();
-        
-        var newId = prompt("1. 새로운 소화전의 [고유 번호]를 입력하세요. (예: 1500)");
-        if(!newId) { cancelAddMode(); return; }
-        
-        var newTitle = prompt("2. [소화전 명칭]을 입력하세요.\n(예: B-가-새지역-999호)");
-        if(!newTitle) { cancelAddMode(); return; }
-        
-        var newDesc = prompt("3. [상세 주소 및 설명]을 입력하세요.");
-        if(newDesc === null) newDesc = "";
-        
-        var newImg = prompt("4. [이미지 파일명]을 입력하세요. (fs1 ~ fs10)\n*입력하지 않으면 기본값 fs1이 적용됩니다.", "fs1");
-        if(!newImg) newImg = "fs1";
-
-        insertNewHydrant(newId, newTitle, lat, lng, newDesc, newImg);
-        cancelAddMode();
-    }
-});
-
-function insertNewHydrant(id, title, lat, lng, desc, img) {
-    var loadingLayer = document.getElementById('loading');
-    loadingLayer.innerHTML = "구글 시트에 소화전 등록 중...";
-    loadingLayer.style.display = 'block';
-
-    fetch(GOOGLE_SCRIPT_URL, {
-        method: 'POST',
-        headers: { "Content-Type": "text/plain;charset=utf-8" },
-        body: JSON.stringify({ action: "insert", id: id, title: title, lat: lat, lng: lng, desc: desc, img: img })
-    })
-    .then(res => res.json())
-    .then(result => {
-        if(result.status === "success") {
-            alert("성공적으로 등록되었습니다.");
-            loadData(); 
-        } else {
-            loadingLayer.style.display = 'none';
-            alert("등록 실패: " + result.message);
-        }
-    })
-    .catch(err => {
-        loadingLayer.style.display = 'none';
-        alert("통신 오류가 발생했습니다.");
-        console.error(err);
-    });
-}
-
+// ★ Cloudflare Worker (PATCH) 데이터 수정 함수
 function updateDataDirectly(id, lat, lng, markerObj, originalPos, overlayObj) {
     var loadingLayer = document.getElementById('loading');
-    loadingLayer.innerHTML = "구글 시트에 변경사항 저장 중...";
+    loadingLayer.innerHTML = "클라우드에 위치 저장 중...";
     loadingLayer.style.display = 'block';
 
-    fetch(GOOGLE_SCRIPT_URL, {
-        method: 'POST',
-        headers: { "Content-Type": "text/plain;charset=utf-8" },
-        body: JSON.stringify({ action: "update", id: id, lat: lat, lng: lng })
+    fetch(`${CLOUDFLARE_API_URL}/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lat: lat, lng: lng })
     })
     .then(res => res.json())
     .then(result => {
         loadingLayer.style.display = 'none';
-        if(result.status === "success") {
-            alert("위치 변경이 완료되었습니다.");
+        if(result.success) {
+            alert("위치 변경이 클라우드에 성공적으로 저장되었습니다.");
             overlayObj.setPosition(new kakao.maps.LatLng(lat, lng)); 
         } else {
-            alert("저장 실패: " + result.message);
+            alert("저장 실패: " + result.error);
             markerObj.setPosition(originalPos);
         }
     })
@@ -586,7 +510,7 @@ function rule_circle() {
     mousemoveHandlerRule = function (mouseEvent) {
         if (drawingFlagCir) { var mousePosition = mouseEvent.latLng; var linePath = [centerPosition, mousePosition]; drawingLineC.setPath(linePath); var length = drawingLineC.getLength();
             if(length > 0) { drawingCircle.setOptions({ center : centerPosition, radius: length }); var radius = Math.round(drawingCircle.getRadius()); var content = '<div class="info">반경 <span class="number">' + radius + '</span>m</div>'; drawingOverlay.setPosition(mousePosition); drawingOverlay.setContent(content); drawingCircle.setMap(map); drawingLineC.setMap(map); drawingOverlay.setMap(map);
-            } else { drawingCircle.setMap(null); drawingLineC.setMap(null); drawingOverlay.setMap(null); } }     
+            } else { drawingCircle.setMap(null); drawingLineC.setMap(null); drawingOverlay.setMap(null); } }      
     };
     kakao.maps.event.addListener(map, 'mousemove', mousemoveHandlerRule);
     rightclickHandlerRule = function(mouseEvent) {    
