@@ -3,13 +3,14 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>소화전 위치 관리 시스템</title>
+    <title>소화전 위치 관리 시스템 (CSV 일괄 등록/수정 지원)</title>
     
     <!-- 카카오 지도 SDK & 내비게이션 SDK -->
     <script type="text/javascript" src="//dapi.kakao.com/v2/maps/sdk.js?appkey=8716aeaad27b0f020a25063da87bd5de&libraries=services,clusterer"></script>
     <script src="//t1.kakaocdn.net/kakao_js_sdk/2.1.0/kakao.min.js"></script>
 
     <style>
+        /* 기본 레이아웃 */
         html, body { width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden; font-family: 'Malgun Gothic', '맑은 고딕', sans-serif; } 
         #container { overflow: hidden; height: 100%; position: relative; background: #f9f9f9; }
         #mapWrapper { width: 100%; height: 100%; z-index: 1; transition: 0.3s; }
@@ -17,6 +18,7 @@
         #container.view_roadview #mapWrapper { width: 50%; }
         #container.view_roadview #rvWrapper { visibility: visible; }
 
+        /* 지도 컨트롤 버튼 */
         .radius_border { border: 1px solid #919191; border-radius: 5px; box-shadow: 0 1px 2px rgba(0,0,0,0.2); }      
         .btn { background: linear-gradient(#fff, #e6e6e6); color: #333; }        
         .btn:hover { background: linear-gradient(#f5f5f5, #e3e3e3); }
@@ -41,23 +43,28 @@
         #menu_rule button { border: none; padding: 6px 10px; border-radius: 4px; background: #0d6efd; color: #fff; font-size: 12px; cursor: pointer; }
         #menu_rule button.berror { background-color: #dc3545; }
 
-        /* 수정모드 & 추가 버튼 */
+        /* 수정모드 및 관리자 서브 버튼 (PC 전용) */
         #editModeBtn {
             position: absolute; top: 15px; left: 50%; transform: translateX(-50%); z-index: 10;
-            background: #fff; border: 2px solid #dc3545; color: #dc3545; padding: 8px 20px;
+            background: #fff; border: 2px solid #dc3545; color: #dc3545; padding: 8px 24px;
             font-size: 13px; font-weight: bold; border-radius: 30px; cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.2); transition: 0.3s;
         }
         #editModeBtn.active { background: #dc3545; color: #fff; border-color: #fff; animation: pulse 1.5s infinite; }
         @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.7); } 70% { box-shadow: 0 0 0 10px rgba(220, 53, 69, 0); } 100% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0); } }
 
-        #addMarkerBtn {
+        #adminSubBtns {
             position: absolute; top: 58px; left: 50%; transform: translateX(-50%); z-index: 10;
-            background: #28a745; border: 2px solid #28a745; color: #fff; padding: 6px 16px;
-            font-size: 12px; font-weight: bold; border-radius: 30px; cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.2);
-            display: none;
+            display: none; flex-direction: row; gap: 8px;
         }
+        .sub-admin-btn {
+            padding: 6px 14px; font-size: 12px; font-weight: bold; border-radius: 20px;
+            cursor: pointer; box-shadow: 0 3px 5px rgba(0,0,0,0.2); border: none; white-space: nowrap;
+        }
+        #addMarkerBtn { background: #28a745; color: #fff; }
+        #downloadCsvBtn { background: #495057; color: #fff; }
+        #uploadCsvBtn { background: #0d6efd; color: #fff; }
 
-        /* 우측 패널 */
+        /* 우측 리스트 패널 */
         #menu_wrap { 
             position: absolute; top: 15px; right: 15px; bottom: 80px; width: 310px; 
             padding: 12px; background: rgba(255, 255, 255, 0.96); z-index: 10; border-radius: 8px; 
@@ -67,7 +74,7 @@
         #filter_wrap { display: flex; flex-wrap: wrap; gap: 4px; padding-bottom: 8px; border-bottom: 1px solid #ddd; margin-bottom: 8px; }
         #filter_wrap button { padding: 4px 7px; font-size: 11px; cursor: pointer; border-radius: 4px; border: 1px solid #ccc; background: #f8f9fa; color: #333; }
         
-        /* 담당자 검색 및 일괄 처리 바 */
+        /* 담당자 검색 바 */
         .manager-bar { display: flex; gap: 4px; margin-bottom: 8px; align-items: center; }
         .manager-bar input { flex: 1; padding: 5px 8px; font-size: 12px; border: 1px solid #ccc; border-radius: 4px; }
         .manager-bar button { padding: 5px 8px; font-size: 11px; border: none; border-radius: 4px; cursor: pointer; background: #0d6efd; color: #fff; white-space: nowrap; }
@@ -88,7 +95,9 @@
         
         #loading { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 999; background: rgba(0,0,0,0.85); color: white; padding: 15px 30px; border-radius: 8px; font-weight: bold; text-align:center; line-height:1.5;}
 
+        /* 모바일 숨김 처리 */
         @media screen and (max-width: 768px) {
+            #editModeBtn, #adminSubBtns { display: none !important; }
             #container.view_roadview #mapWrapper { width: 100%; height: 50%; }
             #rvWrapper { width: 100%; height: 50%; top: 50%; left: 0; right: auto; }
             .mobile_controls_wrapper { position: absolute; bottom: 10px; left: 5px; right: 5px; display: flex; gap: 4px; justify-content: center; flex-wrap: wrap; top: auto; width: auto; height: auto; pointer-events: auto; }
@@ -99,8 +108,6 @@
             #menu_wrap { top: auto; bottom: 80px; left: 10px; right: 10px; width: auto; height: 240px; }
             #menu_rule { top: 10px; left: 10px; }
             #menu_rule button { padding: 4px 6px; font-size: 11px; }
-            #editModeBtn { top: 12px; font-size: 12px; padding: 6px 14px; }
-            #addMarkerBtn { top: 48px; font-size: 11px; padding: 5px 12px; }
         }
     </style>
 </head>
@@ -118,32 +125,34 @@
         <div id="roadviewControl" onclick="setRoadviewRoad()"><span>로드뷰</span></div>
     </div>
     
-    <!-- 수정모드 및 추가 버튼 -->
+    <!-- PC 전용 관리 버튼 (수정모드 켜기 및 서브 버튼들) -->
     <div id="editModeBtn" onclick="toggleEditMode()">수정모드 켜기</div>
-    <div id="addMarkerBtn" onclick="enableAddMode()">➕ 새 소화전 추가</div>
+    <div id="adminSubBtns">
+        <button id="addMarkerBtn" class="sub-admin-btn" onclick="enableAddMode()">➕ 새 소화전 추가</button>
+        <button id="downloadCsvBtn" class="sub-admin-btn" onclick="downloadCSV()">📥 CSV 다운로드</button>
+        <!-- ★ CSV 업로드 버튼 및 숨겨진 파일 인풋 -->
+        <button id="uploadCsvBtn" class="sub-admin-btn" onclick="document.getElementById('csvFileInput').click()">📤 CSV 일괄 업로드</button>
+        <input type="file" id="csvFileInput" accept=".csv" style="display:none;" onchange="handleCSVUpload(event)">
+    </div>
 
     <!-- 우측 패널 -->
     <div id="menu_wrap">
-        <!-- 담당자 검색 입력 영역 -->
         <div class="manager-bar">
             <input type="text" id="mgrSearchInput" placeholder="담당자 검색 (예: 홍길동)" onkeyup="if(event.key==='Enter') searchByManager()">
             <button onclick="searchByManager()">검색</button>
             <button onclick="clearManagerSearch()" style="background:#6c757d;">취소</button>
         </div>
 
-        <!-- 지역 필터 버튼 영역 + 새창 띄우기 버튼 -->
         <div id="filter_wrap">
             <button onclick="filterHydrants('전체')" style="background:#0d6efd; color:#fff; font-weight:bold; border:none;">전체</button>
         </div>
 
-        <!-- 일괄 체크 및 담당자 지정 바 -->
         <div class="batch-action-bar">
             <label><input type="checkbox" id="selectAllChk" onchange="toggleSelectAll(this.checked)"> 전체선택</label>
             <button onclick="assignManagerToChecked()">선택 담당자 지정</button>
-            <button onclick="openCurrentListInNewWindow()" style="background:#0dcaf0; color:#000;">🔗 새창 목록</button>
+            <button onclick="openCurrentListInNewWindow()" style="background:#0dcaf0; color:#000;">🔗 새창</button>
         </div>
 
-        <!-- 목록 컨테이너 -->
         <div id="list_items_container"></div>
     </div>
 </div>
@@ -187,6 +196,13 @@ if (UserAgent.match(/iPhone|iPod|iPad|Android|Windows CE|BlackBerry|Symbian|Wind
     Navi_Imgsrc = "<img src='https://blog.kakaocdn.net/dn/n32AT/btspnjHn5oH/roFNyJ3MjERPumDVr33sF1/navi.png?attach=1&knm=img.png' width='40' style='margin-bottom:5px;'><br>";
 }
 
+if (is_mobile) {
+    var editBtnEl = document.getElementById('editModeBtn');
+    var subBtnsEl = document.getElementById('adminSubBtns');
+    if (editBtnEl) editBtnEl.remove();
+    if (subBtnsEl) subBtnsEl.remove();
+}
+
 var mapContainer = document.getElementById('map');
 var mapCenter = new kakao.maps.LatLng(34.76014841, 127.661568); 
 var mapOption = { center: mapCenter, level: 5 };
@@ -210,7 +226,6 @@ var zAddMode = false;
 var currentFilter = '전체'; 
 var currentManagerFilter = ''; 
 
-// 1. D1 데이터 로드
 function loadData() {
     document.getElementById('loading').style.display = 'block';
     
@@ -232,7 +247,6 @@ function loadData() {
         });
 }
 
-// 지역 필터 버튼 생성
 function generateFilterButtons() {
     var regions = new Set();
     hydrantData.forEach(item => {
@@ -276,7 +290,6 @@ function filterHydrants(keyword) {
     renderMapAndList();
 }
 
-// 담당자별 검색 필터
 function searchByManager() {
     var val = document.getElementById('mgrSearchInput').value.trim();
     currentManagerFilter = val;
@@ -289,7 +302,6 @@ function clearManagerSearch() {
     renderMapAndList();
 }
 
-// 지도 및 패널 목록 렌더링
 function renderMapAndList() {
     var listContainer = document.getElementById('list_items_container');
     listContainer.innerHTML = ""; 
@@ -340,6 +352,18 @@ function renderMapAndList() {
         var detailDesc = (item.detail && item.detail !== "NULL") ? item.detail : "상세설명 없음";
         var managerName = item.manager ? item.manager : "미지정";
         
+        var editControlHtml = "";
+        if (!is_mobile) {
+            editControlHtml = `
+                <div style="margin-top:8px; display:flex; gap:4px;">
+                    <button onclick="openEditDialog(${item.id})" style="flex:1; padding:4px; font-size:11px; background:#0d6efd; color:#fff; border:none; border-radius:3px; cursor:pointer;">✏️ 정보/주소 편집</button>
+                </div>
+                <div style="margin-top:6px; font-size:11px; color:#dc3545;">
+                    ※ 수정모드 상태에서 마커를 드래그하면 위치가 저장됩니다.
+                </div>
+            `;
+        }
+
         var content = `
             <div class="showlistbox">
                 ${naviHtml}
@@ -347,12 +371,7 @@ function renderMapAndList() {
                 <div style="font-size:12px; color:#555;">📍 ${item.desc || '주소 미입력'}</div>
                 <div style="font-size:12px; color:#333; margin-top:2px;">▶ ${detailDesc}</div>
                 <div style="font-size:12px; color:#0d6efd; font-weight:bold; margin-top:4px;">👤 담당자: ${managerName}</div>
-                <div style="margin-top:8px; display:flex; gap:4px;">
-                    <button onclick="openEditDialog(${item.id})" style="flex:1; padding:4px; font-size:11px; background:#0d6efd; color:#fff; border:none; border-radius:3px; cursor:pointer;">✏️ 정보/주소 편집</button>
-                </div>
-                <div style="margin-top:6px; font-size:11px; color:#dc3545;">
-                    ※ 수정모드 상태에서 마커를 드래그하면 위치가 저장됩니다.
-                </div>
+                ${editControlHtml}
             </div>
         `;
         var infowindow = new kakao.maps.InfoWindow({ removable: true, content: content });
@@ -377,7 +396,6 @@ function renderMapAndList() {
             }
         });
 
-        // 패널 아이템 생성 (체크박스 포함)
         var div = document.createElement('div');
         div.className = 'list-item';
         div.innerHTML = `
@@ -395,7 +413,6 @@ function renderMapAndList() {
     clusterer.addMarkers(markers);
 }
 
-// 2. 주소/상세주소/명칭/담당자 편집 대화상자
 window.openEditDialog = function(id) {
     var item = hydrantData.find(h => h.id == id);
     if (!item) return;
@@ -446,7 +463,6 @@ window.openEditDialog = function(id) {
     });
 };
 
-// 3. 다중 선택 일괄 담당자 지정
 function toggleSelectAll(checked) {
     document.querySelectorAll('.hydrant-chk').forEach(chk => chk.checked = checked);
 }
@@ -492,7 +508,6 @@ function assignManagerToChecked() {
     });
 }
 
-// 4. 해당 지역/검색 목록만 새 창으로 띄우기 (인쇄/조회용 테이블)
 function openCurrentListInNewWindow() {
     var filteredList = hydrantData.filter(item => {
         var matchRegion = (currentFilter === '전체' || item.title.includes(currentFilter));
@@ -502,13 +517,13 @@ function openCurrentListInNewWindow() {
 
     var titleText = `소화전 목록 (${currentFilter}${currentManagerFilter ? ' - 담당자:'+currentManagerFilter : ''}) - 총 ${filteredList.length}건`;
 
-    var tableRows = filteredList.map((item, idx) => `
+    var tableRows = filteredList.map(item => `
         <tr>
             <td style="border:1px solid #ddd; padding:8px; text-align:center;">${item.id}</td>
             <td style="border:1px solid #ddd; padding:8px; font-weight:bold;">${item.title}</td>
             <td style="border:1px solid #ddd; padding:8px;">${item.desc || ''}</td>
             <td style="border:1px solid #ddd; padding:8px;">${(item.detail && item.detail!=='NULL') ? item.detail : ''}</td>
-            <td style="border:1px solid #ddd; padding:8px; text-align:center; color:#0d6efd;">${item.manager || '-'}</td>
+            <td style="border:1px solid #ddd; padding:8px; text-align:center; color:#0d6efd; font-weight:bold;">${item.manager || '-'}</td>
             <td style="border:1px solid #ddd; padding:8px; text-align:center;">
                 <a href="https://map.kakao.com/link/map/${item.title},${item.lat},${item.lng}" target="_blank" style="color:#0d6efd; text-decoration:none;">지도보기</a>
             </td>
@@ -559,10 +574,9 @@ function openCurrentListInNewWindow() {
     newWin.document.close();
 }
 
-// 5. 수정모드 & 새 소화전 추가 모드 토글
 window.toggleEditMode = function() {
     var btn = document.getElementById('editModeBtn');
-    var addBtn = document.getElementById('addMarkerBtn');
+    var subBtns = document.getElementById('adminSubBtns');
 
     if(!isEditMode) {
         var pw = prompt("관리자 비밀번호를 입력하세요.");
@@ -570,9 +584,9 @@ window.toggleEditMode = function() {
             isEditMode = true;
             btn.classList.add('active');
             btn.innerText = "수정모드 작동중 (마커 드래그 가능)";
-            addBtn.style.display = 'block';
+            if (subBtns) subBtns.style.display = 'flex';
             markers.forEach(m => m.setDraggable(true));
-            alert("수정모드가 켜졌습니다.\n마커 이동은 드래그로, 신규 등록은 상단 [➕ 새 소화전 추가] 버튼을 누르세요.");
+            alert("수정모드가 켜졌습니다.\n새 소화전 추가, CSV 다운로드 및 일괄 업로드가 가능합니다.");
         } else if (pw !== null) {
             alert("비밀번호가 일치하지 않습니다.");
         }
@@ -581,7 +595,7 @@ window.toggleEditMode = function() {
         cancelAddMode();
         btn.classList.remove('active');
         btn.innerText = "수정모드 켜기";
-        addBtn.style.display = 'none';
+        if (subBtns) subBtns.style.display = 'none';
         markers.forEach(m => m.setDraggable(false));
     }
 };
@@ -589,7 +603,7 @@ window.toggleEditMode = function() {
 window.enableAddMode = function() {
     zAddMode = true;
     var addBtn = document.getElementById('addMarkerBtn');
-    addBtn.innerText = "지도의 설치할 위치를 클릭(터치)하세요...";
+    addBtn.innerText = "지도의 설치할 위치를 클릭하세요...";
     addBtn.style.background = "#ffc107";
     addBtn.style.borderColor = "#ffc107";
     addBtn.style.color = "#000";
@@ -598,13 +612,167 @@ window.enableAddMode = function() {
 window.cancelAddMode = function() {
     zAddMode = false;
     var addBtn = document.getElementById('addMarkerBtn');
-    addBtn.innerText = "➕ 새 소화전 추가";
-    addBtn.style.background = "#28a745";
-    addBtn.style.borderColor = "#28a745";
-    addBtn.style.color = "#fff";
+    if (addBtn) {
+        addBtn.innerText = "➕ 새 소화전 추가";
+        addBtn.style.background = "#28a745";
+        addBtn.style.borderColor = "#28a745";
+        addBtn.style.color = "#fff";
+    }
 };
 
-// 지도 클릭 시 새 소화전 등록
+function downloadCSV() {
+    if (!hydrantData || hydrantData.length === 0) {
+        alert("다운로드할 소화전 데이터가 없습니다.");
+        return;
+    }
+
+    var headers = ["id", "title", "lat", "lng", "desc", "detail", "img", "manager"];
+    var csvRows = [];
+    csvRows.push(headers.join(","));
+
+    hydrantData.forEach(function(item) {
+        var row = [
+            item.id,
+            `"${(item.title || "").replace(/"/g, '""')}"`,
+            item.lat,
+            item.lng,
+            `"${(item.desc || "").replace(/"/g, '""')}"`,
+            `"${((item.detail && item.detail !== 'NULL') ? item.detail : "").replace(/"/g, '""')}"`,
+            `"${(item.img || "fs1").replace(/"/g, '""')}"`,
+            `"${(item.manager || "").replace(/"/g, '""')}"`
+        ];
+        csvRows.push(row.join(","));
+    });
+
+    var csvString = "\uFEFF" + csvRows.join("\r\n");
+    var blob = new Blob([csvString], { type: "text/csv;charset=utf-8;" });
+    var link = document.createElement("a");
+    var url = URL.createObjectURL(blob);
+    
+    var today = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `소화전_현황_${today}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+}
+
+// ★ CSV 파일 파서 (따옴표 및 쉼표 완벽 처리)
+function parseCSVText(text) {
+    var lines = text.split(/\r\n|\n|\r/).filter(line => line.trim() !== "");
+    if (lines.length < 2) return [];
+
+    function parseLine(line) {
+        var result = [];
+        var cur = "";
+        var inQuotes = false;
+        for (var i = 0; i < line.length; i++) {
+            var c = line[i];
+            if (c === '"') {
+                if (inQuotes && line[i + 1] === '"') {
+                    cur += '"';
+                    i++;
+                } else {
+                    inQuotes = !inQuotes;
+                }
+            } else if (c === ',' && !inQuotes) {
+                result.push(cur.trim());
+                cur = "";
+            } else {
+                cur += c;
+            }
+        }
+        result.push(cur.trim());
+        return result;
+    }
+
+    var headers = parseLine(lines[0]).map(h => h.toLowerCase().replace(/['"]/g, ''));
+    var items = [];
+
+    for (var i = 1; i < lines.length; i++) {
+        var cols = parseLine(lines[i]);
+        if (cols.length === 0 || (cols.length === 1 && cols[0] === "")) continue;
+
+        var obj = {};
+        headers.forEach((h, idx) => {
+            obj[h] = cols[idx] !== undefined ? cols[idx] : "";
+        });
+
+        // 필수 필드(id, title, lat, lng) 확인
+        if (obj.id && obj.title && obj.lat && obj.lng) {
+            items.push({
+                id: parseInt(obj.id),
+                title: obj.title,
+                lat: parseFloat(obj.lat),
+                lng: parseFloat(obj.lng),
+                desc: obj.desc || "",
+                detail: obj.detail || "",
+                img: obj.img || "fs1",
+                manager: obj.manager || ""
+            });
+        }
+    }
+    return items;
+}
+
+// ★ CSV 파일 일괄 업로드 실행
+function handleCSVUpload(event) {
+    var file = event.target.files[0];
+    if (!file) return;
+
+    var reader = new FileReader();
+    reader.onload = function(e) {
+        try {
+            var text = e.target.result;
+            var parsedItems = parseCSVText(text);
+
+            if (parsedItems.length === 0) {
+                alert("CSV 파일에 유효한 데이터가 없거나 헤더 규격(id, title, lat, lng...)이 맞지 않습니다.");
+                event.target.value = "";
+                return;
+            }
+
+            if (!confirm(`총 ${parsedItems.length}개의 소화전 데이터를 클라우드에 일괄 등록/수정하시겠습니까?\n(기존 ID는 정보가 갱신되고, 새 ID는 신규 등록됩니다.)`)) {
+                event.target.value = "";
+                return;
+            }
+
+            var loadingLayer = document.getElementById('loading');
+            loadingLayer.innerHTML = `총 ${parsedItems.length}건 소화전 데이터 일괄 반영 중...`;
+            loadingLayer.style.display = 'block';
+
+            fetch(`${CLOUDFLARE_API_URL}/batch-upsert`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ items: parsedItems })
+            })
+            .then(res => res.json())
+            .then(result => {
+                loadingLayer.style.display = 'none';
+                event.target.value = "";
+                if (result.success) {
+                    alert(`성공적으로 ${result.count}건의 소화전 데이터가 등록 및 갱신되었습니다!`);
+                    loadData(); // 최신 데이터 재조회
+                } else {
+                    alert("일괄 업로드 실패: " + result.error);
+                }
+            })
+            .catch(err => {
+                loadingLayer.style.display = 'none';
+                event.target.value = "";
+                alert("통신 중 오류가 발생했습니다.");
+                console.error(err);
+            });
+
+        } catch (err) {
+            alert("CSV 파싱 중 오류가 발생했습니다: " + err.message);
+            event.target.value = "";
+        }
+    };
+
+    reader.readAsText(file, "utf-8");
+}
+
 kakao.maps.event.addListener(map, 'click', function(mouseEvent) {
     if (zAddMode) {
         var lat = mouseEvent.latLng.getLat();
@@ -656,7 +824,6 @@ function insertNewHydrant(title, lat, lng, desc, detail, img, manager) {
     });
 }
 
-// 마커 드래그 위치 수정 함수
 function updateLocationDirectly(id, lat, lng, markerObj, originalPos, overlayObj) {
     var loadingLayer = document.getElementById('loading');
     loadingLayer.innerHTML = "클라우드에 위치 저장 중...";
@@ -698,7 +865,6 @@ kakao.maps.event.addListener(map, 'zoom_changed', function() {
 
 window.onload = loadData;
 
-// 기타 컨트롤 및 그리기 함수 (기존 유지)
 function setMapType(maptype) { 
     if (maptype === 'roadmap') {
         map.setMapTypeId(kakao.maps.MapTypeId.ROADMAP);  
@@ -768,7 +934,7 @@ function setCenter(Lat, Lng) {
     setTimeout(function () { circle.setMap(null); }, 2000);
 }
 
-// 로드뷰
+// 로드뷰 제어
 var overlayOn = false;
 var rvMarkImage = new kakao.maps.MarkerImage('https://t1.daumcdn.net/localimg/localimages/07/mapapidoc/roadview_wk.png', new kakao.maps.Size(35,39), { offset: new kakao.maps.Point(14, 39) });
 var rvMarker = new kakao.maps.Marker({ image : rvMarkImage, position: mapCenter, draggable: true });
@@ -788,7 +954,7 @@ function setRoadviewRoad() {
 }
 function closeRoadview() { toggleMapWrapper(true, rvMarker.getPosition()); }
 
-// 측정 도구
+// 거리/면적/반경 도구
 var drawingFlagCir = false, centerPosition, drawingCircle, drawingLineC, drawingOverlay;
 var circles = [], clickLine, moveLine, drawingFlagLine = false, distanceOverlay, dots = [];
 var drawingFlagPoly = false, drawingPolygon, polygon, areaOverlay;
