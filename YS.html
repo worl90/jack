@@ -10,7 +10,6 @@
     <script src="//t1.kakaocdn.net/kakao_js_sdk/2.1.0/kakao.min.js"></script>
 
     <style>
-        /* 기본 레이아웃 */
         html, body { width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden; font-family: 'Malgun Gothic', '맑은 고딕', sans-serif; } 
         #container { overflow: hidden; height: 100%; position: relative; background: #f9f9f9; }
         #mapWrapper { width: 100%; height: 100%; z-index: 1; transition: 0.3s; }
@@ -18,7 +17,6 @@
         #container.view_roadview #mapWrapper { width: 50%; }
         #container.view_roadview #rvWrapper { visibility: visible; }
 
-        /* 지도 컨트롤 버튼 */
         .radius_border { border: 1px solid #919191; border-radius: 5px; box-shadow: 0 1px 2px rgba(0,0,0,0.2); }      
         .btn { background: linear-gradient(#fff, #e6e6e6); color: #333; }        
         .btn:hover { background: linear-gradient(#f5f5f5, #e3e3e3); }
@@ -99,7 +97,7 @@
         
         #loading { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 999; background: rgba(0,0,0,0.85); color: white; padding: 15px 30px; border-radius: 8px; font-weight: bold; text-align:center; line-height:1.5;}
 
-        /* 모바일 반응형: CSV 다운로드 및 업로드 버튼만 숨기고 수정/추가 버튼은 유지 */
+        /* 모바일 반응형 */
         @media screen and (max-width: 768px) {
             .pc-only-btn { display: none !important; }
             #editModeBtn { top: 10px; font-size: 12px; padding: 6px 16px; }
@@ -133,17 +131,14 @@
         <div id="roadviewControl" onclick="setRoadviewRoad()"><span>로드뷰</span></div>
     </div>
     
-    <!-- 수정모드 버튼 (모바일/PC 모두 사용 가능) -->
     <div id="editModeBtn" onclick="toggleEditMode()">수정모드 켜기</div>
     <div id="adminSubBtns">
         <button id="addMarkerBtn" class="sub-admin-btn" onclick="enableAddMode()">➕ 새 소화전 추가</button>
-        <!-- CSV 버튼은 pc-only-btn 클래스를 주어 모바일에서만 숨김 -->
         <button id="downloadCsvBtn" class="sub-admin-btn pc-only-btn" onclick="downloadCSV()">📥 현재목록 CSV 다운로드</button>
         <button id="uploadCsvBtn" class="sub-admin-btn pc-only-btn" onclick="document.getElementById('csvFileInput').click()">📤 CSV 일괄 업로드</button>
         <input type="file" id="csvFileInput" accept=".csv" style="display:none;" onchange="handleCSVUpload(event)">
     </div>
 
-    <!-- 우측 패널 -->
     <div id="menu_wrap">
         <div class="manager-bar">
             <input type="text" id="mgrSearchInput" placeholder="담당자 또는 팀 검색" onkeyup="if(event.key==='Enter') searchByManager()">
@@ -234,6 +229,58 @@ var currentFilter = '전체';
 var currentTeamFilter = '전체';
 var currentManagerFilter = ''; 
 
+// ★ 1. 사용자 지정 지역 정렬 우선순위
+var REGION_ORDER = ["학동", "연등", "여서", "봉산", "돌산", "평여", "소라", "정대", "화학"];
+
+// ★ 2. 지역명 추출 함수
+function getRegionName(title) {
+    if (!title) return "";
+    var parts = title.split('-');
+    if (parts.length >= 3) {
+        return parts[2].trim();
+    }
+    return "";
+}
+
+// ★ 3. 호수 번호 추출 함수 (예: "B-가-학동-216호" -> 216)
+function getHydrantNumber(title) {
+    if (!title) return 999999;
+    var match = title.match(/(\d+)호?$/);
+    return match ? parseInt(match[1], 10) : 999999;
+}
+
+// ★ 4. 복합 정렬: 1차(지정 지역순) -> 2차(호수 작은수->큰수 오름차순)
+function compareHydrants(a, b) {
+    var regA = getRegionName(a.title);
+    var regB = getRegionName(b.title);
+
+    var idxA = REGION_ORDER.indexOf(regA);
+    var idxB = REGION_ORDER.indexOf(regB);
+
+    if (idxA === -1) idxA = 999;
+    if (idxB === -1) idxB = 999;
+
+    // 1차 지역 순서 비교
+    if (idxA !== idxB) {
+        return idxA - idxB;
+    }
+
+    // 지정 지역 외 기타 지역끼리는 가나다순
+    if (idxA === 999 && regA !== regB) {
+        return regA.localeCompare(regB, 'ko');
+    }
+
+    // 2차: 동일 지역 내부에서는 호수 번호 오름차순 (작은수 -> 큰수)
+    var numA = getHydrantNumber(a.title);
+    var numB = getHydrantNumber(b.title);
+    if (numA !== numB) {
+        return numA - numB;
+    }
+
+    // 번호도 같으면 명칭 문자열 기준 정렬
+    return (a.title || "").localeCompare(b.title || "", 'ko');
+}
+
 function loadData() {
     var loadingEl = document.getElementById('loading');
     if (loadingEl) loadingEl.style.display = 'block';
@@ -247,6 +294,9 @@ function loadData() {
             if (loadingEl) loadingEl.style.display = 'none';
             hydrantData = Array.isArray(data) ? data : [];
             
+            // 데이터 로드 시 기본 전체 정렬 적용
+            hydrantData.sort(compareHydrants);
+
             try {
                 generateTeamButtons();
                 generateFilterButtons();
@@ -304,21 +354,30 @@ function filterByTeam(teamName) {
     renderMapAndList();
 }
 
+// 지역 버튼 생성 시에도 [학동, 연등, 여서, ...] 우선순위 적용
 function generateFilterButtons() {
-    var regions = new Set();
+    var foundRegions = new Set();
     hydrantData.forEach(item => {
         if (item && item.title) {
-            var parts = item.title.split('-');
-            if (parts.length >= 3) {
-                regions.add(parts[2]);
-            }
+            var reg = getRegionName(item.title);
+            if (reg) foundRegions.add(reg);
         }
     });
+
+    // 지정 우선순위 순 정렬 후 나머지 지역 추가
+    var sortedRegions = [];
+    REGION_ORDER.forEach(r => {
+        if (foundRegions.has(r)) {
+            sortedRegions.push(r);
+            foundRegions.delete(r);
+        }
+    });
+    Array.from(foundRegions).sort().forEach(r => sortedRegions.push(r));
 
     var filterWrap = document.getElementById('filter_wrap');
     filterWrap.innerHTML = `<button onclick="filterHydrants('전체')" style="${currentFilter==='전체'?'background:#0d6efd; color:#fff; font-weight:bold; border:none;':'background:#f8f9fa; color:#333; border:1px solid #ccc;'}">전체</button>`;
 
-    regions.forEach(region => {
+    sortedRegions.forEach(region => {
         var isSelected = (currentFilter === region);
         var btnBg = isSelected ? "background:#0d6efd; color:#fff; font-weight:bold; border:none;" : "background:#f8f9fa; color:#333; border:1px solid #ccc;";
         
@@ -385,6 +444,9 @@ function renderMapAndList() {
         return matchRegion && matchTeam && matchKeyword;
     });
 
+    // 필터링된 결과도 대분류 지역순 -> 호수 작은수 순으로 정렬
+    filteredList.sort(compareHydrants);
+
     filteredList.forEach(function(item) {
         var imgName = item.img ? item.img : "fs1"; 
         var imgSrc = "https://worl90.github.io/jack/" + imgName + ".png";
@@ -417,7 +479,6 @@ function renderMapAndList() {
         var teamName = item.team ? item.team : "팀 미지정";
         var managerName = item.manager ? item.manager : "미지정";
         
-        // 모바일/PC 모두 마커 정보 팝업에서 편집 가능하도록 버튼 제공
         var editControlHtml = `
             <div style="margin-top:8px; display:flex; gap:4px;">
                 <button onclick="openEditDialog(${item.id})" style="flex:1; padding:4px; font-size:11px; background:#0d6efd; color:#fff; border:none; border-radius:3px; cursor:pointer;">✏️ 정보/팀/담당자 편집</button>
@@ -430,7 +491,7 @@ function renderMapAndList() {
         var content = `
             <div class="showlistbox">
                 ${naviHtml}
-                <b>${item.id}. ${item.title}</b>
+                <b>${item.title}</b>
                 <div style="font-size:12px; color:#555;">📍 ${item.desc || '주소 미입력'}</div>
                 <div style="font-size:12px; color:#333; margin-top:2px;">▶ ${detailDesc}</div>
                 <div style="font-size:12px; color:#495057; font-weight:bold; margin-top:4px;">🏢 소속: <b>${teamName}</b></div>
@@ -465,7 +526,7 @@ function renderMapAndList() {
         div.innerHTML = `
             <input type="checkbox" class="hydrant-chk" value="${item.id}">
             <span class="list-item-team">${item.team ? item.team : '미정'}</span>
-            <span class="list-item-title">${item.id}. ${item.title}</span>
+            <span class="list-item-title">${item.title}</span>
             <span class="list-item-mgr">${item.manager ? item.manager : '미지정'}</span>
         `;
         div.querySelector('.list-item-title').onclick = function() {
@@ -478,7 +539,6 @@ function renderMapAndList() {
     clusterer.addMarkers(markers);
 }
 
-// 개별 소화전 편집 (모바일/PC 공통)
 window.openEditDialog = function(id) {
     var item = hydrantData.find(h => h.id == id);
     if (!item) return;
@@ -523,7 +583,9 @@ window.openEditDialog = function(id) {
             item.manager = newManager;
             item.desc = newDesc;
             item.detail = newDetail;
+            hydrantData.sort(compareHydrants);
             generateTeamButtons();
+            generateFilterButtons();
             renderMapAndList();
         } else {
             alert("저장 실패: " + result.error);
@@ -609,11 +671,12 @@ function openCurrentListInNewWindow() {
         return matchRegion && matchTeam && matchKeyword;
     });
 
+    filteredList.sort(compareHydrants);
+
     var titleText = `소화전 목록 (지역:${currentFilter} / 팀:${currentTeamFilter}) - 총 ${filteredList.length}건`;
 
     var tableRows = filteredList.map(item => `
         <tr>
-            <td style="border:1px solid #ddd; padding:8px; text-align:center;">${item.id}</td>
             <td style="border:1px solid #ddd; padding:8px; text-align:center; font-weight:bold;">${item.team || '-'}</td>
             <td style="border:1px solid #ddd; padding:8px; font-weight:bold;">${item.title}</td>
             <td style="border:1px solid #ddd; padding:8px;">${item.desc || ''}</td>
@@ -648,9 +711,8 @@ function openCurrentListInNewWindow() {
             <table>
                 <thead>
                     <tr>
-                        <th width="60">ID</th>
                         <th width="80">소속팀</th>
-                        <th width="160">소화전 명칭</th>
+                        <th width="180">소화전 명칭</th>
                         <th>도로명 주소</th>
                         <th>상세 설명</th>
                         <th width="100">담당자</th>
@@ -670,7 +732,6 @@ function openCurrentListInNewWindow() {
     newWin.document.close();
 }
 
-// 수정모드 토글 (모바일/PC 공통 작동)
 window.toggleEditMode = function() {
     var btn = document.getElementById('editModeBtn');
     var subBtns = document.getElementById('adminSubBtns');
@@ -717,7 +778,6 @@ window.cancelAddMode = function() {
     }
 };
 
-// 스마트 CSV 다운로드 (PC 전용)
 function downloadCSV() {
     if (!hydrantData || hydrantData.length === 0) {
         alert("다운로드할 소화전 데이터가 없습니다.");
@@ -739,6 +799,8 @@ function downloadCSV() {
         alert("현재 선택된 조건에 해당하는 소화전이 없습니다.");
         return;
     }
+
+    targetList.sort(compareHydrants);
 
     var headers = ["id", "title", "lat", "lng", "desc", "detail", "img", "team", "manager"];
     var csvRows = [];
@@ -778,7 +840,6 @@ function downloadCSV() {
     document.body.removeChild(link);
 }
 
-// CSV 파일 업로드 파싱 (PC 전용)
 function parseCSVText(text) {
     var lines = text.split(/\r\n|\n|\r/).filter(line => line.trim() !== "");
     if (lines.length < 2) return [];
@@ -836,6 +897,7 @@ function parseCSVText(text) {
     return items;
 }
 
+// ★ CSV 업로드 시 중복 검사 차단 안전장치 내장
 function handleCSVUpload(event) {
     var file = event.target.files[0];
     if (!file) return;
@@ -852,7 +914,32 @@ function handleCSVUpload(event) {
                 return;
             }
 
-            if (!confirm(`총 ${parsedItems.length}개의 소화전 데이터를 일괄 등록/수정하시겠습니까?`)) {
+            // ★ 중복 검사: 파일 내에 동일한 ID 또는 동일한 명칭이 존재하는지 확인
+            var idSet = new Set();
+            var titleSet = new Set();
+            var dupErrors = [];
+
+            for (var i = 0; i < parsedItems.length; i++) {
+                var itm = parsedItems[i];
+                if (idSet.has(itm.id)) {
+                    dupErrors.push(`ID 중복: ${itm.id}번 (명칭: ${itm.title})`);
+                }
+                if (titleSet.has(itm.title)) {
+                    dupErrors.push(`소화전 명칭 중복: [${itm.title}]`);
+                }
+                idSet.add(itm.id);
+                titleSet.add(itm.title);
+
+                if (dupErrors.length >= 3) break;
+            }
+
+            if (dupErrors.length > 0) {
+                alert("⚠️ 파일 내에 중복된 데이터가 발견되어 업로드가 취소되었습니다!\n\n" + dupErrors.join("\n") + "\n\n엑셀에서 중복을 확인 및 수정 후 다시 업로드해주세요.");
+                event.target.value = "";
+                return;
+            }
+
+            if (!confirm(`총 ${parsedItems.length}개의 소화전 데이터를 클라우드에 일괄 등록/수정하시겠습니까?`)) {
                 event.target.value = "";
                 return;
             }
@@ -892,7 +979,6 @@ function handleCSVUpload(event) {
     reader.readAsText(file, "utf-8");
 }
 
-// 신규 소화전 추가 (모바일/PC 공통)
 kakao.maps.event.addListener(map, 'click', function(mouseEvent) {
     if (zAddMode) {
         var lat = mouseEvent.latLng.getLat();
@@ -901,6 +987,14 @@ kakao.maps.event.addListener(map, 'click', function(mouseEvent) {
         var newTitle = prompt("1. [소화전 명칭]을 입력하세요.\n(예: B-가-학동-999호)");
         if(!newTitle) { cancelAddMode(); return; }
         
+        // 동일 명칭 중복 사전 체크
+        var exists = hydrantData.some(h => h.title === newTitle.trim());
+        if (exists) {
+            alert(`이미 등록되어 있는 명칭입니다: [${newTitle}]`);
+            cancelAddMode();
+            return;
+        }
+
         var newTeam = prompt("2. [소속 팀 이름]을 입력하세요. (예: 1팀, 2팀)");
         if(newTeam === null) newTeam = "";
 
@@ -916,7 +1010,7 @@ kakao.maps.event.addListener(map, 'click', function(mouseEvent) {
         var newImg = prompt("6. [아이콘 구분] (fs1 ~ fs10)", "fs1");
         if(!newImg) newImg = "fs1";
 
-        insertNewHydrant(newTitle, lat, lng, newDesc, newDetail, newImg, newTeam, newManager);
+        insertNewHydrant(newTitle.trim(), lat, lng, newDesc, newDetail, newImg, newTeam.trim(), newManager.trim());
         cancelAddMode();
     }
 });
@@ -947,7 +1041,6 @@ function insertNewHydrant(title, lat, lng, desc, detail, img, team, manager) {
     });
 }
 
-// 위치 변경 저장 (모바일/PC 공통)
 function updateLocationDirectly(id, lat, lng, markerObj, originalPos, overlayObj) {
     var loadingLayer = document.getElementById('loading');
     loadingLayer.innerHTML = "클라우드에 위치 저장 중...";
