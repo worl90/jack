@@ -140,10 +140,11 @@
     </div>
 
     <div id="menu_wrap">
+        <!-- ★ 소화전 명칭 / 담당자 / 팀 통합 검색창 -->
         <div class="manager-bar">
-            <input type="text" id="mgrSearchInput" placeholder="담당자 또는 팀 검색" onkeyup="if(event.key==='Enter') searchByManager()">
-            <button onclick="searchByManager()">검색</button>
-            <button onclick="clearManagerSearch()" style="background:#6c757d;">취소</button>
+            <input type="text" id="mgrSearchInput" placeholder="명칭(예: 216호) 또는 담당자/팀 검색" onkeyup="if(event.key==='Enter') searchKeyword()">
+            <button onclick="searchKeyword()">검색</button>
+            <button onclick="clearSearch()" style="background:#6c757d;">취소</button>
         </div>
 
         <div style="font-size:11px; color:#555; margin-bottom:3px; font-weight:bold;">팀별 분류:</div>
@@ -227,12 +228,10 @@ var isEditMode = false;
 var zAddMode = false;
 var currentFilter = '전체'; 
 var currentTeamFilter = '전체';
-var currentManagerFilter = ''; 
+var currentSearchKeyword = ''; // ★ 통합 검색어
 
-// ★ 1. 사용자 지정 지역 정렬 우선순위
 var REGION_ORDER = ["학동", "연등", "여서", "봉산", "돌산", "평여", "소라", "정대", "화학"];
 
-// ★ 2. 지역명 추출 함수
 function getRegionName(title) {
     if (!title) return "";
     var parts = title.split('-');
@@ -242,14 +241,12 @@ function getRegionName(title) {
     return "";
 }
 
-// ★ 3. 호수 번호 추출 함수 (예: "B-가-학동-216호" -> 216)
 function getHydrantNumber(title) {
     if (!title) return 999999;
     var match = title.match(/(\d+)호?$/);
     return match ? parseInt(match[1], 10) : 999999;
 }
 
-// ★ 4. 복합 정렬: 1차(지정 지역순) -> 2차(호수 작은수->큰수 오름차순)
 function compareHydrants(a, b) {
     var regA = getRegionName(a.title);
     var regB = getRegionName(b.title);
@@ -260,24 +257,20 @@ function compareHydrants(a, b) {
     if (idxA === -1) idxA = 999;
     if (idxB === -1) idxB = 999;
 
-    // 1차 지역 순서 비교
     if (idxA !== idxB) {
         return idxA - idxB;
     }
 
-    // 지정 지역 외 기타 지역끼리는 가나다순
     if (idxA === 999 && regA !== regB) {
         return regA.localeCompare(regB, 'ko');
     }
 
-    // 2차: 동일 지역 내부에서는 호수 번호 오름차순 (작은수 -> 큰수)
     var numA = getHydrantNumber(a.title);
     var numB = getHydrantNumber(b.title);
     if (numA !== numB) {
         return numA - numB;
     }
 
-    // 번호도 같으면 명칭 문자열 기준 정렬
     return (a.title || "").localeCompare(b.title || "", 'ko');
 }
 
@@ -293,8 +286,6 @@ function loadData() {
         .then(data => {
             if (loadingEl) loadingEl.style.display = 'none';
             hydrantData = Array.isArray(data) ? data : [];
-            
-            // 데이터 로드 시 기본 전체 정렬 적용
             hydrantData.sort(compareHydrants);
 
             try {
@@ -354,7 +345,6 @@ function filterByTeam(teamName) {
     renderMapAndList();
 }
 
-// 지역 버튼 생성 시에도 [학동, 연등, 여서, ...] 우선순위 적용
 function generateFilterButtons() {
     var foundRegions = new Set();
     hydrantData.forEach(item => {
@@ -364,7 +354,6 @@ function generateFilterButtons() {
         }
     });
 
-    // 지정 우선순위 순 정렬 후 나머지 지역 추가
     var sortedRegions = [];
     REGION_ORDER.forEach(r => {
         if (foundRegions.has(r)) {
@@ -408,15 +397,16 @@ function filterHydrants(keyword) {
     renderMapAndList();
 }
 
-function searchByManager() {
+// ★ 통합 검색 함수: 소화전 명칭(title), 담당자(manager), 팀(team), 주소(desc) 포함
+function searchKeyword() {
     var val = document.getElementById('mgrSearchInput').value.trim();
-    currentManagerFilter = val;
+    currentSearchKeyword = val;
     renderMapAndList();
 }
 
-function clearManagerSearch() {
+function clearSearch() {
     document.getElementById('mgrSearchInput').value = '';
-    currentManagerFilter = '';
+    currentSearchKeyword = '';
     renderMapAndList();
 }
 
@@ -433,18 +423,25 @@ function renderMapAndList() {
     customOverlays.forEach(overlay => overlay.setMap(null));
     customOverlays = [];
 
+    // ★ 명칭, 담당자, 팀, 주소 통합 필터링 적용
     var filteredList = hydrantData.filter(item => {
         if (!item || !item.title) return false;
         var matchRegion = (currentFilter === '전체' || item.title.includes(currentFilter));
         var matchTeam = (currentTeamFilter === '전체' || item.team === currentTeamFilter);
-        var matchKeyword = (!currentManagerFilter || 
-            (item.manager && item.manager.includes(currentManagerFilter)) ||
-            (item.team && item.team.includes(currentManagerFilter))
-        );
+        
+        var matchKeyword = true;
+        if (currentSearchKeyword) {
+            var kw = currentSearchKeyword.toLowerCase();
+            var titleMatch = (item.title && item.title.toLowerCase().includes(kw));
+            var managerMatch = (item.manager && item.manager.toLowerCase().includes(kw));
+            var teamMatch = (item.team && item.team.toLowerCase().includes(kw));
+            var descMatch = (item.desc && item.desc.toLowerCase().includes(kw));
+            matchKeyword = (titleMatch || managerMatch || teamMatch || descMatch);
+        }
+        
         return matchRegion && matchTeam && matchKeyword;
     });
 
-    // 필터링된 결과도 대분류 지역순 -> 호수 작은수 순으로 정렬
     filteredList.sort(compareHydrants);
 
     filteredList.forEach(function(item) {
@@ -664,16 +661,23 @@ function openCurrentListInNewWindow() {
         if (!item || !item.title) return false;
         var matchRegion = (currentFilter === '전체' || item.title.includes(currentFilter));
         var matchTeam = (currentTeamFilter === '전체' || item.team === currentTeamFilter);
-        var matchKeyword = (!currentManagerFilter || 
-            (item.manager && item.manager.includes(currentManagerFilter)) ||
-            (item.team && item.team.includes(currentManagerFilter))
-        );
+        
+        var matchKeyword = true;
+        if (currentSearchKeyword) {
+            var kw = currentSearchKeyword.toLowerCase();
+            var titleMatch = (item.title && item.title.toLowerCase().includes(kw));
+            var managerMatch = (item.manager && item.manager.toLowerCase().includes(kw));
+            var teamMatch = (item.team && item.team.toLowerCase().includes(kw));
+            var descMatch = (item.desc && item.desc.toLowerCase().includes(kw));
+            matchKeyword = (titleMatch || managerMatch || teamMatch || descMatch);
+        }
+        
         return matchRegion && matchTeam && matchKeyword;
     });
 
     filteredList.sort(compareHydrants);
 
-    var titleText = `소화전 목록 (지역:${currentFilter} / 팀:${currentTeamFilter}) - 총 ${filteredList.length}건`;
+    var titleText = `소화전 목록 (지역:${currentFilter} / 팀:${currentTeamFilter}${currentSearchKeyword ? ' / 검색:'+currentSearchKeyword : ''}) - 총 ${filteredList.length}건`;
 
     var tableRows = filteredList.map(item => `
         <tr>
@@ -788,10 +792,17 @@ function downloadCSV() {
         if (!item || !item.title) return false;
         var matchRegion = (currentFilter === '전체' || item.title.includes(currentFilter));
         var matchTeam = (currentTeamFilter === '전체' || item.team === currentTeamFilter);
-        var matchKeyword = (!currentManagerFilter || 
-            (item.manager && item.manager.includes(currentManagerFilter)) ||
-            (item.team && item.team.includes(currentManagerFilter))
-        );
+        
+        var matchKeyword = true;
+        if (currentSearchKeyword) {
+            var kw = currentSearchKeyword.toLowerCase();
+            var titleMatch = (item.title && item.title.toLowerCase().includes(kw));
+            var managerMatch = (item.manager && item.manager.toLowerCase().includes(kw));
+            var teamMatch = (item.team && item.team.toLowerCase().includes(kw));
+            var descMatch = (item.desc && item.desc.toLowerCase().includes(kw));
+            matchKeyword = (titleMatch || managerMatch || teamMatch || descMatch);
+        }
+        
         return matchRegion && matchTeam && matchKeyword;
     });
 
@@ -830,7 +841,7 @@ function downloadCSV() {
     var filterName = "";
     if (currentFilter !== '전체') filterName += `_${currentFilter}`;
     if (currentTeamFilter !== '전체') filterName += `_${currentTeamFilter}`;
-    if (currentManagerFilter) filterName += `_${currentManagerFilter}`;
+    if (currentSearchKeyword) filterName += `_${currentSearchKeyword}`;
     if (!filterName) filterName = "_전체";
 
     link.setAttribute("href", url);
@@ -897,7 +908,6 @@ function parseCSVText(text) {
     return items;
 }
 
-// ★ CSV 업로드 시 중복 검사 차단 안전장치 내장
 function handleCSVUpload(event) {
     var file = event.target.files[0];
     if (!file) return;
@@ -914,7 +924,6 @@ function handleCSVUpload(event) {
                 return;
             }
 
-            // ★ 중복 검사: 파일 내에 동일한 ID 또는 동일한 명칭이 존재하는지 확인
             var idSet = new Set();
             var titleSet = new Set();
             var dupErrors = [];
@@ -987,7 +996,6 @@ kakao.maps.event.addListener(map, 'click', function(mouseEvent) {
         var newTitle = prompt("1. [소화전 명칭]을 입력하세요.\n(예: B-가-학동-999호)");
         if(!newTitle) { cancelAddMode(); return; }
         
-        // 동일 명칭 중복 사전 체크
         var exists = hydrantData.some(h => h.title === newTitle.trim());
         if (exists) {
             alert(`이미 등록되어 있는 명칭입니다: [${newTitle}]`);
