@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>소화전 위치 관리 시스템</title>
+    <title>소화전 위치 관리 시스템 (안전센터 이동 연동판)</title>
     
     <!-- 카카오 지도 SDK & 내비게이션 SDK -->
     <script type="text/javascript" src="//dapi.kakao.com/v2/maps/sdk.js?appkey=8716aeaad27b0f020a25063da87bd5de&libraries=services,clusterer"></script>
@@ -140,7 +140,6 @@
     </div>
 
     <div id="menu_wrap">
-        <!-- ★ 소화전 명칭 / 담당자 / 팀 통합 검색창 -->
         <div class="manager-bar">
             <input type="text" id="mgrSearchInput" placeholder="명칭(예: 216호) 또는 담당자/팀 검색" onkeyup="if(event.key==='Enter') searchKeyword()">
             <button onclick="searchKeyword()">검색</button>
@@ -228,9 +227,23 @@ var isEditMode = false;
 var zAddMode = false;
 var currentFilter = '전체'; 
 var currentTeamFilter = '전체';
-var currentSearchKeyword = ''; // ★ 통합 검색어
+var currentSearchKeyword = '';
 
 var REGION_ORDER = ["학동", "연등", "여서", "봉산", "돌산", "평여", "소라", "정대", "화학"];
+
+// ★ 119안전센터 및 거점별 좌표 & 기본 확대레벨 맵핑
+var CENTER_LOCATIONS = {
+    '전체': { lat: 34.76014841, lng: 127.661568, level: 6 }, // 여수 전경
+    '학동': { lat: 34.76189, lng: 127.66195, level: 4 },    // 학동119안전센터 (망마로 20)
+    '연등': { lat: 34.74256, lng: 127.72967, level: 4 },    // 연등119안전센터 (좌수영로 162)
+    '여서': { lat: 34.75782, lng: 127.70295, level: 4 },    // 여서119안전센터 (문수로 131)
+    '봉산': { lat: 34.73024, lng: 127.73012, level: 4 },    // 봉산119안전센터 (어항단지로 222-5)
+    '돌산': { lat: 34.72140, lng: 127.75219, level: 5 },    // 돌산119안전센터 (강남4길 17-18)
+    '평여': { lat: 34.80964, lng: 127.66943, level: 4 },    // 평여119안전센터 (여수산단로 321)
+    '소라': { lat: 34.84298, lng: 127.63318, level: 5 },    // 소라119안전센터 (소라면 여순로 297)
+    '정대': { lat: 34.75382, lng: 127.74712, level: 4 },    // 소방정대 (덕충안길 95)
+    '화학': { lat: 34.84972, lng: 127.69751, level: 4 }     // 화학119구조대 (여수산단로 725)
+};
 
 function getRegionName(title) {
     if (!title) return "";
@@ -378,6 +391,7 @@ function generateFilterButtons() {
     });
 }
 
+// ★ 지역 탭 클릭 시 해당 119안전센터로 지도 부드럽게 이동
 function filterHydrants(keyword) {
     currentFilter = keyword;
     var buttons = document.querySelectorAll('#filter_wrap button');
@@ -394,10 +408,17 @@ function filterHydrants(keyword) {
             btn.style.fontWeight = "normal";
         }
     });
+
+    // 안전센터 좌표가 등록되어 있으면 해당 위치로 부드럽게 이동
+    if (CENTER_LOCATIONS[keyword]) {
+        var targetPos = new kakao.maps.LatLng(CENTER_LOCATIONS[keyword].lat, CENTER_LOCATIONS[keyword].lng);
+        map.setLevel(CENTER_LOCATIONS[keyword].level);
+        map.panTo(targetPos);
+    }
+
     renderMapAndList();
 }
 
-// ★ 통합 검색 함수: 소화전 명칭(title), 담당자(manager), 팀(team), 주소(desc) 포함
 function searchKeyword() {
     var val = document.getElementById('mgrSearchInput').value.trim();
     currentSearchKeyword = val;
@@ -423,7 +444,6 @@ function renderMapAndList() {
     customOverlays.forEach(overlay => overlay.setMap(null));
     customOverlays = [];
 
-    // ★ 명칭, 담당자, 팀, 주소 통합 필터링 적용
     var filteredList = hydrantData.filter(item => {
         if (!item || !item.title) return false;
         var matchRegion = (currentFilter === '전체' || item.title.includes(currentFilter));
