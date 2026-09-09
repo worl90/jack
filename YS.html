@@ -3,13 +3,14 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>소화전 위치 관리 시스템 (스마트 필터 CSV 연동판)</title>
+    <title>소화전 위치 관리 시스템</title>
     
     <!-- 카카오 지도 SDK & 내비게이션 SDK -->
     <script type="text/javascript" src="//dapi.kakao.com/v2/maps/sdk.js?appkey=8716aeaad27b0f020a25063da87bd5de&libraries=services,clusterer"></script>
     <script src="//t1.kakaocdn.net/kakao_js_sdk/2.1.0/kakao.min.js"></script>
 
     <style>
+        /* 기본 레이아웃 */
         html, body { width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden; font-family: 'Malgun Gothic', '맑은 고딕', sans-serif; } 
         #container { overflow: hidden; height: 100%; position: relative; background: #f9f9f9; }
         #mapWrapper { width: 100%; height: 100%; z-index: 1; transition: 0.3s; }
@@ -17,6 +18,7 @@
         #container.view_roadview #mapWrapper { width: 50%; }
         #container.view_roadview #rvWrapper { visibility: visible; }
 
+        /* 지도 컨트롤 버튼 */
         .radius_border { border: 1px solid #919191; border-radius: 5px; box-shadow: 0 1px 2px rgba(0,0,0,0.2); }      
         .btn { background: linear-gradient(#fff, #e6e6e6); color: #333; }        
         .btn:hover { background: linear-gradient(#f5f5f5, #e3e3e3); }
@@ -41,21 +43,22 @@
         #menu_rule button { border: none; padding: 6px 10px; border-radius: 4px; background: #0d6efd; color: #fff; font-size: 12px; cursor: pointer; }
         #menu_rule button.berror { background-color: #dc3545; }
 
-        /* PC 수정모드 및 관리자 서브 버튼 */
+        /* 수정모드 및 관리자 버튼 */
         #editModeBtn {
             position: absolute; top: 15px; left: 50%; transform: translateX(-50%); z-index: 10;
-            background: #fff; border: 2px solid #dc3545; color: #dc3545; padding: 8px 24px;
+            background: #fff; border: 2px solid #dc3545; color: #dc3545; padding: 8px 22px;
             font-size: 13px; font-weight: bold; border-radius: 30px; cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.2); transition: 0.3s;
+            white-space: nowrap;
         }
         #editModeBtn.active { background: #dc3545; color: #fff; border-color: #fff; animation: pulse 1.5s infinite; }
         @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.7); } 70% { box-shadow: 0 0 0 10px rgba(220, 53, 69, 0); } 100% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0); } }
 
         #adminSubBtns {
             position: absolute; top: 58px; left: 50%; transform: translateX(-50%); z-index: 10;
-            display: none; flex-direction: row; gap: 8px;
+            display: none; flex-direction: row; gap: 6px; flex-wrap: wrap; justify-content: center;
         }
         .sub-admin-btn {
-            padding: 6px 14px; font-size: 12px; font-weight: bold; border-radius: 20px;
+            padding: 6px 12px; font-size: 12px; font-weight: bold; border-radius: 20px;
             cursor: pointer; box-shadow: 0 3px 5px rgba(0,0,0,0.2); border: none; white-space: nowrap;
         }
         #addMarkerBtn { background: #28a745; color: #fff; }
@@ -96,9 +99,13 @@
         
         #loading { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 999; background: rgba(0,0,0,0.85); color: white; padding: 15px 30px; border-radius: 8px; font-weight: bold; text-align:center; line-height:1.5;}
 
-        /* 모바일 숨김 처리 */
+        /* 모바일 반응형: CSV 다운로드 및 업로드 버튼만 숨기고 수정/추가 버튼은 유지 */
         @media screen and (max-width: 768px) {
-            #editModeBtn, #adminSubBtns { display: none !important; }
+            .pc-only-btn { display: none !important; }
+            #editModeBtn { top: 10px; font-size: 12px; padding: 6px 16px; }
+            #adminSubBtns { top: 48px; }
+            .sub-admin-btn { font-size: 11px; padding: 5px 12px; }
+            
             #container.view_roadview #mapWrapper { width: 100%; height: 50%; }
             #rvWrapper { width: 100%; height: 50%; top: 50%; left: 0; right: auto; }
             .mobile_controls_wrapper { position: absolute; bottom: 10px; left: 5px; right: 5px; display: flex; gap: 4px; justify-content: center; flex-wrap: wrap; top: auto; width: auto; height: auto; pointer-events: auto; }
@@ -126,12 +133,13 @@
         <div id="roadviewControl" onclick="setRoadviewRoad()"><span>로드뷰</span></div>
     </div>
     
-    <!-- PC 전용 관리 버튼 -->
+    <!-- 수정모드 버튼 (모바일/PC 모두 사용 가능) -->
     <div id="editModeBtn" onclick="toggleEditMode()">수정모드 켜기</div>
     <div id="adminSubBtns">
         <button id="addMarkerBtn" class="sub-admin-btn" onclick="enableAddMode()">➕ 새 소화전 추가</button>
-        <button id="downloadCsvBtn" class="sub-admin-btn" onclick="downloadCSV()">📥 현재목록 CSV 다운로드</button>
-        <button id="uploadCsvBtn" class="sub-admin-btn" onclick="document.getElementById('csvFileInput').click()">📤 CSV 일괄 업로드</button>
+        <!-- CSV 버튼은 pc-only-btn 클래스를 주어 모바일에서만 숨김 -->
+        <button id="downloadCsvBtn" class="sub-admin-btn pc-only-btn" onclick="downloadCSV()">📥 현재목록 CSV 다운로드</button>
+        <button id="uploadCsvBtn" class="sub-admin-btn pc-only-btn" onclick="document.getElementById('csvFileInput').click()">📤 CSV 일괄 업로드</button>
         <input type="file" id="csvFileInput" accept=".csv" style="display:none;" onchange="handleCSVUpload(event)">
     </div>
 
@@ -143,19 +151,16 @@
             <button onclick="clearManagerSearch()" style="background:#6c757d;">취소</button>
         </div>
 
-        <!-- 1. 팀 필터 바 -->
         <div style="font-size:11px; color:#555; margin-bottom:3px; font-weight:bold;">팀별 분류:</div>
         <div id="team_filter_wrap">
             <button onclick="filterByTeam('전체')" style="background:#495057; color:#fff; font-weight:bold; border:none;">전체팀</button>
         </div>
 
-        <!-- 2. 지역 필터 바 -->
         <div style="font-size:11px; color:#555; margin-bottom:3px; font-weight:bold;">지역별 분류:</div>
         <div id="filter_wrap">
             <button onclick="filterHydrants('전체')" style="background:#0d6efd; color:#fff; font-weight:bold; border:none;">전체</button>
         </div>
 
-        <!-- 체크박스 및 일괄 지정 바 -->
         <div class="batch-action-bar">
             <label><input type="checkbox" id="selectAllChk" onchange="toggleSelectAll(this.checked)"> 전체</label>
             <button onclick="assignTeamAndManagerToChecked()">팀/담당자 일괄지정</button>
@@ -205,13 +210,6 @@ if (UserAgent.match(/iPhone|iPod|iPad|Android|Windows CE|BlackBerry|Symbian|Wind
     Navi_Imgsrc = "<img src='https://blog.kakaocdn.net/dn/n32AT/btspnjHn5oH/roFNyJ3MjERPumDVr33sF1/navi.png?attach=1&knm=img.png' width='40' style='margin-bottom:5px;'><br>";
 }
 
-if (is_mobile) {
-    var editBtnEl = document.getElementById('editModeBtn');
-    var subBtnsEl = document.getElementById('adminSubBtns');
-    if (editBtnEl) editBtnEl.remove();
-    if (subBtnsEl) subBtnsEl.remove();
-}
-
 var mapContainer = document.getElementById('map');
 var mapCenter = new kakao.maps.LatLng(34.76014841, 127.661568); 
 var mapOption = { center: mapCenter, level: 5 };
@@ -237,32 +235,38 @@ var currentTeamFilter = '전체';
 var currentManagerFilter = ''; 
 
 function loadData() {
-    document.getElementById('loading').style.display = 'block';
+    var loadingEl = document.getElementById('loading');
+    if (loadingEl) loadingEl.style.display = 'block';
     
     fetch(CLOUDFLARE_API_URL)
         .then(response => {
-            if (!response.ok) throw new Error('API 응답 에러');
+            if (!response.ok) throw new Error('API 응답 에러 (코드: ' + response.status + ')');
             return response.json();
         })
         .then(data => {
-            document.getElementById('loading').style.display = 'none';
-            hydrantData = data;
+            if (loadingEl) loadingEl.style.display = 'none';
+            hydrantData = Array.isArray(data) ? data : [];
             
-            generateTeamButtons();
-            generateFilterButtons();
-            renderMapAndList();
+            try {
+                generateTeamButtons();
+                generateFilterButtons();
+                renderMapAndList();
+            } catch (err) {
+                console.error("렌더링 오류:", err);
+            }
         })
         .catch(error => {
-            document.getElementById('loading').innerHTML = "네트워크 연결 확인 필요<br>데이터 로드 실패!";
+            if (loadingEl) {
+                loadingEl.innerHTML = "데이터 로드 실패!<br><span style='font-size:12px;font-weight:normal;'>" + error.message + "</span><br><button onclick='location.reload()' style='margin-top:10px;padding:4px 8px;'>새로고침</button>";
+            }
             console.error('Error:', error);
         });
 }
 
-// 1. 팀 필터 버튼 자동 생성
 function generateTeamButtons() {
     var teams = new Set();
     hydrantData.forEach(item => {
-        if (item.team && item.team.trim() !== "") {
+        if (item && item.team && item.team.trim() !== "") {
             teams.add(item.team.trim());
         }
     });
@@ -300,13 +304,14 @@ function filterByTeam(teamName) {
     renderMapAndList();
 }
 
-// 2. 지역 필터 버튼 자동 생성
 function generateFilterButtons() {
     var regions = new Set();
     hydrantData.forEach(item => {
-        var parts = item.title.split('-');
-        if (parts.length >= 3) {
-            regions.add(parts[2]);
+        if (item && item.title) {
+            var parts = item.title.split('-');
+            if (parts.length >= 3) {
+                regions.add(parts[2]);
+            }
         }
     });
 
@@ -356,7 +361,6 @@ function clearManagerSearch() {
     renderMapAndList();
 }
 
-// 3. 지도 및 패널 렌더링
 function renderMapAndList() {
     var listContainer = document.getElementById('list_items_container');
     listContainer.innerHTML = ""; 
@@ -371,6 +375,7 @@ function renderMapAndList() {
     customOverlays = [];
 
     var filteredList = hydrantData.filter(item => {
+        if (!item || !item.title) return false;
         var matchRegion = (currentFilter === '전체' || item.title.includes(currentFilter));
         var matchTeam = (currentTeamFilter === '전체' || item.team === currentTeamFilter);
         var matchKeyword = (!currentManagerFilter || 
@@ -412,17 +417,15 @@ function renderMapAndList() {
         var teamName = item.team ? item.team : "팀 미지정";
         var managerName = item.manager ? item.manager : "미지정";
         
-        var editControlHtml = "";
-        if (!is_mobile) {
-            editControlHtml = `
-                <div style="margin-top:8px; display:flex; gap:4px;">
-                    <button onclick="openEditDialog(${item.id})" style="flex:1; padding:4px; font-size:11px; background:#0d6efd; color:#fff; border:none; border-radius:3px; cursor:pointer;">✏️ 정보/팀/담당자 편집</button>
-                </div>
-                <div style="margin-top:6px; font-size:11px; color:#dc3545;">
-                    ※ 수정모드 상태에서 마커를 드래그하면 위치가 저장됩니다.
-                </div>
-            `;
-        }
+        // 모바일/PC 모두 마커 정보 팝업에서 편집 가능하도록 버튼 제공
+        var editControlHtml = `
+            <div style="margin-top:8px; display:flex; gap:4px;">
+                <button onclick="openEditDialog(${item.id})" style="flex:1; padding:4px; font-size:11px; background:#0d6efd; color:#fff; border:none; border-radius:3px; cursor:pointer;">✏️ 정보/팀/담당자 편집</button>
+            </div>
+            <div style="margin-top:6px; font-size:11px; color:#dc3545;">
+                ※ 상단 '수정모드'가 켜져 있으면 마커를 드래그하여 위치 이동이 가능합니다.
+            </div>
+        `;
 
         var content = `
             <div class="showlistbox">
@@ -475,7 +478,7 @@ function renderMapAndList() {
     clusterer.addMarkers(markers);
 }
 
-// 4. 개별 소화전 편집 다이얼로그
+// 개별 소화전 편집 (모바일/PC 공통)
 window.openEditDialog = function(id) {
     var item = hydrantData.find(h => h.id == id);
     if (!item) return;
@@ -536,7 +539,6 @@ function toggleSelectAll(checked) {
     document.querySelectorAll('.hydrant-chk').forEach(chk => chk.checked = checked);
 }
 
-// 5. 선택 소화전 팀/담당자 일괄 지정
 function assignTeamAndManagerToChecked() {
     var chks = document.querySelectorAll('.hydrant-chk:checked');
     if (chks.length === 0) {
@@ -595,9 +597,9 @@ function assignTeamAndManagerToChecked() {
     });
 }
 
-// 6. 새 창으로 목록 인쇄 및 조회
 function openCurrentListInNewWindow() {
     var filteredList = hydrantData.filter(item => {
+        if (!item || !item.title) return false;
         var matchRegion = (currentFilter === '전체' || item.title.includes(currentFilter));
         var matchTeam = (currentTeamFilter === '전체' || item.team === currentTeamFilter);
         var matchKeyword = (!currentManagerFilter || 
@@ -668,6 +670,7 @@ function openCurrentListInNewWindow() {
     newWin.document.close();
 }
 
+// 수정모드 토글 (모바일/PC 공통 작동)
 window.toggleEditMode = function() {
     var btn = document.getElementById('editModeBtn');
     var subBtns = document.getElementById('adminSubBtns');
@@ -680,7 +683,7 @@ window.toggleEditMode = function() {
             btn.innerText = "수정모드 작동중 (마커 드래그 가능)";
             if (subBtns) subBtns.style.display = 'flex';
             markers.forEach(m => m.setDraggable(true));
-            alert("수정모드가 켜졌습니다.\n팀/담당자 지정 및 마커 드래그가 가능합니다.");
+            alert("수정모드가 켜졌습니다.\n소화전 마커 드래그 이동 및 추가가 가능합니다.");
         } else if (pw !== null) {
             alert("비밀번호가 일치하지 않습니다.");
         }
@@ -697,7 +700,7 @@ window.toggleEditMode = function() {
 window.enableAddMode = function() {
     zAddMode = true;
     var addBtn = document.getElementById('addMarkerBtn');
-    addBtn.innerText = "지도의 설치할 위치를 클릭하세요...";
+    addBtn.innerText = "지도의 설치할 위치를 터치하세요...";
     addBtn.style.background = "#ffc107";
     addBtn.style.borderColor = "#ffc107";
     addBtn.style.color = "#000";
@@ -714,7 +717,7 @@ window.cancelAddMode = function() {
     }
 };
 
-// ★ 스마트 CSV 다운로드 (선택된 지역/팀 필터 항목만 추출)
+// 스마트 CSV 다운로드 (PC 전용)
 function downloadCSV() {
     if (!hydrantData || hydrantData.length === 0) {
         alert("다운로드할 소화전 데이터가 없습니다.");
@@ -722,6 +725,7 @@ function downloadCSV() {
     }
 
     var targetList = hydrantData.filter(item => {
+        if (!item || !item.title) return false;
         var matchRegion = (currentFilter === '전체' || item.title.includes(currentFilter));
         var matchTeam = (currentTeamFilter === '전체' || item.team === currentTeamFilter);
         var matchKeyword = (!currentManagerFilter || 
@@ -774,7 +778,7 @@ function downloadCSV() {
     document.body.removeChild(link);
 }
 
-// 8. CSV 파싱 및 일괄 업로드 처리
+// CSV 파일 업로드 파싱 (PC 전용)
 function parseCSVText(text) {
     var lines = text.split(/\r\n|\n|\r/).filter(line => line.trim() !== "");
     if (lines.length < 2) return [];
@@ -848,7 +852,7 @@ function handleCSVUpload(event) {
                 return;
             }
 
-            if (!confirm(`총 ${parsedItems.length}개의 소화전 데이터를 클라우드에 일괄 등록/수정하시겠습니까?`)) {
+            if (!confirm(`총 ${parsedItems.length}개의 소화전 데이터를 일괄 등록/수정하시겠습니까?`)) {
                 event.target.value = "";
                 return;
             }
@@ -888,7 +892,7 @@ function handleCSVUpload(event) {
     reader.readAsText(file, "utf-8");
 }
 
-// 9. 지도 클릭 새 소화전 등록
+// 신규 소화전 추가 (모바일/PC 공통)
 kakao.maps.event.addListener(map, 'click', function(mouseEvent) {
     if (zAddMode) {
         var lat = mouseEvent.latLng.getLat();
@@ -943,6 +947,7 @@ function insertNewHydrant(title, lat, lng, desc, detail, img, team, manager) {
     });
 }
 
+// 위치 변경 저장 (모바일/PC 공통)
 function updateLocationDirectly(id, lat, lng, markerObj, originalPos, overlayObj) {
     var loadingLayer = document.getElementById('loading');
     loadingLayer.innerHTML = "클라우드에 위치 저장 중...";
@@ -984,7 +989,6 @@ kakao.maps.event.addListener(map, 'zoom_changed', function() {
 
 window.onload = loadData;
 
-// 기타 컨트롤 및 그리기 함수
 function setMapType(maptype) { 
     if (maptype === 'roadmap') {
         map.setMapTypeId(kakao.maps.MapTypeId.ROADMAP);  
