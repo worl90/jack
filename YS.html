@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>소화전</title>
+    <title>소화전 위치 관리 시스템 (스마트 필터 CSV 연동판)</title>
     
     <!-- 카카오 지도 SDK & 내비게이션 SDK -->
     <script type="text/javascript" src="//dapi.kakao.com/v2/maps/sdk.js?appkey=8716aeaad27b0f020a25063da87bd5de&libraries=services,clusterer"></script>
@@ -69,11 +69,9 @@
             border: 1px solid #919191; overflow-y: auto; display: block; box-shadow: 0 4px 8px rgba(0,0,0,0.2);
         }
         
-        /* 팀 필터 바 */
         #team_filter_wrap { display: flex; flex-wrap: wrap; gap: 4px; padding-bottom: 6px; border-bottom: 1px dashed #ccc; margin-bottom: 6px; }
         #team_filter_wrap button { padding: 3px 7px; font-size: 11px; cursor: pointer; border-radius: 4px; border: 1px solid #adb5bd; background: #f8f9fa; }
 
-        /* 지역 필터 바 */
         #filter_wrap { display: flex; flex-wrap: wrap; gap: 4px; padding-bottom: 8px; border-bottom: 1px solid #ddd; margin-bottom: 8px; }
         #filter_wrap button { padding: 3px 7px; font-size: 11px; cursor: pointer; border-radius: 4px; border: 1px solid #ccc; background: #f8f9fa; color: #333; }
         
@@ -98,6 +96,7 @@
         
         #loading { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 999; background: rgba(0,0,0,0.85); color: white; padding: 15px 30px; border-radius: 8px; font-weight: bold; text-align:center; line-height:1.5;}
 
+        /* 모바일 숨김 처리 */
         @media screen and (max-width: 768px) {
             #editModeBtn, #adminSubBtns { display: none !important; }
             #container.view_roadview #mapWrapper { width: 100%; height: 50%; }
@@ -131,7 +130,7 @@
     <div id="editModeBtn" onclick="toggleEditMode()">수정모드 켜기</div>
     <div id="adminSubBtns">
         <button id="addMarkerBtn" class="sub-admin-btn" onclick="enableAddMode()">➕ 새 소화전 추가</button>
-        <button id="downloadCsvBtn" class="sub-admin-btn" onclick="downloadCSV()">📥 CSV 다운로드</button>
+        <button id="downloadCsvBtn" class="sub-admin-btn" onclick="downloadCSV()">📥 현재목록 CSV 다운로드</button>
         <button id="uploadCsvBtn" class="sub-admin-btn" onclick="document.getElementById('csvFileInput').click()">📤 CSV 일괄 업로드</button>
         <input type="file" id="csvFileInput" accept=".csv" style="display:none;" onchange="handleCSVUpload(event)">
     </div>
@@ -476,7 +475,7 @@ function renderMapAndList() {
     clusterer.addMarkers(markers);
 }
 
-// 4. 개별 소화전 편집 다이얼로그 (팀/담당자 포함)
+// 4. 개별 소화전 편집 다이얼로그
 window.openEditDialog = function(id) {
     var item = hydrantData.find(h => h.id == id);
     if (!item) return;
@@ -596,7 +595,7 @@ function assignTeamAndManagerToChecked() {
     });
 }
 
-// 6. 새 창으로 목록 인쇄 및 조회 (팀 컬럼 포함)
+// 6. 새 창으로 목록 인쇄 및 조회
 function openCurrentListInNewWindow() {
     var filteredList = hydrantData.filter(item => {
         var matchRegion = (currentFilter === '전체' || item.title.includes(currentFilter));
@@ -715,10 +714,25 @@ window.cancelAddMode = function() {
     }
 };
 
-// 7. CSV 다운로드 시 team 컬럼 포함
+// ★ 스마트 CSV 다운로드 (선택된 지역/팀 필터 항목만 추출)
 function downloadCSV() {
     if (!hydrantData || hydrantData.length === 0) {
         alert("다운로드할 소화전 데이터가 없습니다.");
+        return;
+    }
+
+    var targetList = hydrantData.filter(item => {
+        var matchRegion = (currentFilter === '전체' || item.title.includes(currentFilter));
+        var matchTeam = (currentTeamFilter === '전체' || item.team === currentTeamFilter);
+        var matchKeyword = (!currentManagerFilter || 
+            (item.manager && item.manager.includes(currentManagerFilter)) ||
+            (item.team && item.team.includes(currentManagerFilter))
+        );
+        return matchRegion && matchTeam && matchKeyword;
+    });
+
+    if (targetList.length === 0) {
+        alert("현재 선택된 조건에 해당하는 소화전이 없습니다.");
         return;
     }
 
@@ -726,7 +740,7 @@ function downloadCSV() {
     var csvRows = [];
     csvRows.push(headers.join(","));
 
-    hydrantData.forEach(function(item) {
+    targetList.forEach(function(item) {
         var row = [
             item.id,
             `"${(item.title || "").replace(/"/g, '""')}"`,
@@ -747,14 +761,20 @@ function downloadCSV() {
     var url = URL.createObjectURL(blob);
     
     var today = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+    var filterName = "";
+    if (currentFilter !== '전체') filterName += `_${currentFilter}`;
+    if (currentTeamFilter !== '전체') filterName += `_${currentTeamFilter}`;
+    if (currentManagerFilter) filterName += `_${currentManagerFilter}`;
+    if (!filterName) filterName = "_전체";
+
     link.setAttribute("href", url);
-    link.setAttribute("download", `소화전_현황_${today}.csv`);
+    link.setAttribute("download", `소화전${filterName}_${today}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
 }
 
-// 8. CSV 파싱 시 team 컬럼 자동 인식
+// 8. CSV 파싱 및 일괄 업로드 처리
 function parseCSVText(text) {
     var lines = text.split(/\r\n|\n|\r/).filter(line => line.trim() !== "");
     if (lines.length < 2) return [];
@@ -828,7 +848,7 @@ function handleCSVUpload(event) {
                 return;
             }
 
-            if (!confirm(`총 ${parsedItems.length}개의 소화전 데이터(팀/담당자 포함)를 일괄 등록/수정하시겠습니까?`)) {
+            if (!confirm(`총 ${parsedItems.length}개의 소화전 데이터를 클라우드에 일괄 등록/수정하시겠습니까?`)) {
                 event.target.value = "";
                 return;
             }
@@ -868,7 +888,7 @@ function handleCSVUpload(event) {
     reader.readAsText(file, "utf-8");
 }
 
-// 9. 지도 클릭 시 새 소화전 등록 (팀 입력 포함)
+// 9. 지도 클릭 새 소화전 등록
 kakao.maps.event.addListener(map, 'click', function(mouseEvent) {
     if (zAddMode) {
         var lat = mouseEvent.latLng.getLat();
@@ -964,6 +984,7 @@ kakao.maps.event.addListener(map, 'zoom_changed', function() {
 
 window.onload = loadData;
 
+// 기타 컨트롤 및 그리기 함수
 function setMapType(maptype) { 
     if (maptype === 'roadmap') {
         map.setMapTypeId(kakao.maps.MapTypeId.ROADMAP);  
@@ -1131,3 +1152,1158 @@ function RulerRemove(){
 </script>
 </body>
 </html>
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>소화전 위치 관리 시스템 (스마트 필터 CSV 연동판)</title>
+    
+    <!-- 카카오 지도 SDK & 내비게이션 SDK -->
+    <script type="text/javascript" src="//dapi.kakao.com/v2/maps/sdk.js?appkey=8716aeaad27b0f020a25063da87bd5de&libraries=services,clusterer"></script>
+    <script src="//t1.kakaocdn.net/kakao_js_sdk/2.1.0/kakao.min.js"></script>
+
+    <style>
+        html, body { width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden; font-family: 'Malgun Gothic', '맑은 고딕', sans-serif; } 
+        #container { overflow: hidden; height: 100%; position: relative; background: #f9f9f9; }
+        #mapWrapper { width: 100%; height: 100%; z-index: 1; transition: 0.3s; }
+        #rvWrapper { width: 50%; height: 100%; top: 0; right: 0; position: absolute; z-index: 0; transition: 0.3s; visibility: hidden; }
+        #container.view_roadview #mapWrapper { width: 50%; }
+        #container.view_roadview #rvWrapper { visibility: visible; }
+
+        .radius_border { border: 1px solid #919191; border-radius: 5px; box-shadow: 0 1px 2px rgba(0,0,0,0.2); }      
+        .btn { background: linear-gradient(#fff, #e6e6e6); color: #333; }        
+        .btn:hover { background: linear-gradient(#f5f5f5, #e3e3e3); }
+        .selected_btn { color: #fff; background: linear-gradient(#425470, #5b6d8a); }
+        
+        .mobile_controls_wrapper { pointer-events: none; z-index: 2; position: absolute; width: 100%; height: 100%; top: 0; left: 0; }
+        .control_group { position: absolute; display: flex; overflow: hidden; pointer-events: auto; }
+        .control_group span { display: block; width: auto; padding: 0 12px; height: 32px; line-height: 32px; text-align: center; font-size: 13px; cursor: pointer; }
+        .ct_map    { bottom: 20px; left: 5px; }        
+        .ct_ground { bottom: 20px; left: 160px; }      
+        .ct_me     { bottom: 20px; left: 410px; }      
+        .ct_list   { bottom: 20px; right: 22px; }      
+
+        #roadviewControl { position: absolute; bottom: 20px; left: 320px; width: 65px; height: 25px; padding: 2px; z-index: 2; background: #f7f7f7; border-radius: 4px; border: 1px solid #c8c8c8; cursor: pointer; }
+        #roadviewControl span { background: url(https://t1.daumcdn.net/localimg/localimages/07/mapapidoc/mapworker.png) no-repeat; padding-left: 23px; height: 24px; font-size: 12px; display: inline-block; line-height: 2; font-weight: bold; color: #333; }
+        #roadviewControl.active { background: #ccc; border: 1px solid #7F818A; }
+        #roadviewControl.active span { background: url(https://t1.daumcdn.net/localimg/localimages/07/mapapidoc/mapworker_on.png) no-repeat; color: #4C4E57; }
+        #close { position: absolute; padding: 6px; top: 10px; right: 10px; cursor: pointer; background: #fff; border-radius: 4px; border: 1px solid #c8c8c8; z-index: 3;}
+        #close .img { display: block; background: url(https://t1.daumcdn.net/localimg/localimages/07/mapapidoc/rv_close.png) no-repeat; width: 14px; height: 14px; }    
+        
+        #menu_rule { position: absolute; top: 15px; left: 15px; padding: 6px; background: rgba(255, 255, 255, 0.9); z-index: 2; border: 1px solid #919191; border-radius: 5px; display: flex; gap: 5px; }
+        #menu_rule button { border: none; padding: 6px 10px; border-radius: 4px; background: #0d6efd; color: #fff; font-size: 12px; cursor: pointer; }
+        #menu_rule button.berror { background-color: #dc3545; }
+
+        /* PC 수정모드 및 관리자 서브 버튼 */
+        #editModeBtn {
+            position: absolute; top: 15px; left: 50%; transform: translateX(-50%); z-index: 10;
+            background: #fff; border: 2px solid #dc3545; color: #dc3545; padding: 8px 24px;
+            font-size: 13px; font-weight: bold; border-radius: 30px; cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.2); transition: 0.3s;
+        }
+        #editModeBtn.active { background: #dc3545; color: #fff; border-color: #fff; animation: pulse 1.5s infinite; }
+        @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.7); } 70% { box-shadow: 0 0 0 10px rgba(220, 53, 69, 0); } 100% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0); } }
+
+        #adminSubBtns {
+            position: absolute; top: 58px; left: 50%; transform: translateX(-50%); z-index: 10;
+            display: none; flex-direction: row; gap: 8px;
+        }
+        .sub-admin-btn {
+            padding: 6px 14px; font-size: 12px; font-weight: bold; border-radius: 20px;
+            cursor: pointer; box-shadow: 0 3px 5px rgba(0,0,0,0.2); border: none; white-space: nowrap;
+        }
+        #addMarkerBtn { background: #28a745; color: #fff; }
+        #downloadCsvBtn { background: #495057; color: #fff; }
+        #uploadCsvBtn { background: #0d6efd; color: #fff; }
+
+        /* 우측 패널 */
+        #menu_wrap { 
+            position: absolute; top: 15px; right: 15px; bottom: 80px; width: 320px; 
+            padding: 12px; background: rgba(255, 255, 255, 0.96); z-index: 10; border-radius: 8px; 
+            border: 1px solid #919191; overflow-y: auto; display: block; box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+        
+        #team_filter_wrap { display: flex; flex-wrap: wrap; gap: 4px; padding-bottom: 6px; border-bottom: 1px dashed #ccc; margin-bottom: 6px; }
+        #team_filter_wrap button { padding: 3px 7px; font-size: 11px; cursor: pointer; border-radius: 4px; border: 1px solid #adb5bd; background: #f8f9fa; }
+
+        #filter_wrap { display: flex; flex-wrap: wrap; gap: 4px; padding-bottom: 8px; border-bottom: 1px solid #ddd; margin-bottom: 8px; }
+        #filter_wrap button { padding: 3px 7px; font-size: 11px; cursor: pointer; border-radius: 4px; border: 1px solid #ccc; background: #f8f9fa; color: #333; }
+        
+        .manager-bar { display: flex; gap: 4px; margin-bottom: 8px; align-items: center; }
+        .manager-bar input { flex: 1; padding: 5px 8px; font-size: 12px; border: 1px solid #ccc; border-radius: 4px; }
+        .manager-bar button { padding: 5px 8px; font-size: 11px; border: none; border-radius: 4px; cursor: pointer; background: #0d6efd; color: #fff; white-space: nowrap; }
+
+        .batch-action-bar { display: flex; justify-content: space-between; align-items: center; background: #eef2f7; padding: 6px 8px; border-radius: 4px; margin-bottom: 8px; font-size: 12px; }
+        .batch-action-bar button { background: #198754; color: #fff; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 11px; }
+
+        .list-item { display: flex; align-items: center; gap: 5px; padding: 6px 4px; border-bottom: 1px solid #eee; font-size: 12px; }
+        .list-item:hover { background: #f0f8ff; }
+        .list-item-title { flex: 1; cursor: pointer; text-overflow: ellipsis; overflow: hidden; white-space: nowrap; }
+        .list-item-team { font-size: 11px; color: #fff; background: #6c757d; padding: 1px 4px; border-radius: 3px; }
+        .list-item-mgr { font-size: 11px; color: #0d6efd; background: #e7f1ff; padding: 1px 5px; border-radius: 3px; }
+
+        .showlistbox { width: 260px; padding: 10px; font-size: 12px; line-height: 1.5; box-sizing: border-box; text-align: left; }
+        .showlistbox b { font-size: 14px; color: #333; display: inline-block; margin-bottom: 4px; }
+        .label { margin-bottom: 96px; display: flex; font-size: 12px; background: rgba(255,255,255,0.9); padding: 2px 8px; border-radius: 12px; border: 1px solid #ccc; font-weight: bold; }
+        .dotOverlay, .info, .distanceInfo { position: relative; border-radius: 6px; border: 1px solid #ccc; background: #fff; padding: 5px; font-size: 12px; }
+        .number { font-weight: bold; color: #00a0e9; }
+        
+        #loading { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 999; background: rgba(0,0,0,0.85); color: white; padding: 15px 30px; border-radius: 8px; font-weight: bold; text-align:center; line-height:1.5;}
+
+        /* 모바일 숨김 처리 */
+        @media screen and (max-width: 768px) {
+            #editModeBtn, #adminSubBtns { display: none !important; }
+            #container.view_roadview #mapWrapper { width: 100%; height: 50%; }
+            #rvWrapper { width: 100%; height: 50%; top: 50%; left: 0; right: auto; }
+            .mobile_controls_wrapper { position: absolute; bottom: 10px; left: 5px; right: 5px; display: flex; gap: 4px; justify-content: center; flex-wrap: wrap; top: auto; width: auto; height: auto; pointer-events: auto; }
+            .control_group { position: static; left: auto; right: auto; bottom: auto; flex-shrink: 0; }
+            .control_group span { font-size: 12px; padding: 0 8px; height: 28px; line-height: 28px; white-space: nowrap; }
+            #roadviewControl { bottom: 80px; left: auto; right: 10px; width: auto; height: 32px; display: flex; align-items: center; justify-content: center; padding: 0 8px; }
+            #roadviewControl span { background-position: left center; }
+            #menu_wrap { top: auto; bottom: 80px; left: 10px; right: 10px; width: auto; height: 240px; }
+            #menu_rule { top: 10px; left: 10px; }
+            #menu_rule button { padding: 4px 6px; font-size: 11px; }
+        }
+    </style>
+</head>
+<body>
+
+<div id="loading">소화전 데이터를<br>불러오는 중입니다...</div>
+
+<div id="container">
+    <div id="rvWrapper">
+        <div id="roadview" style="width:100%;height:100%;"></div>
+        <div id="close" title="로드뷰닫기" onclick="closeRoadview()"><span class="img"></span></div>
+    </div>
+    <div id="mapWrapper">
+        <div id="map" style="width:100%;height:100%"></div>
+        <div id="roadviewControl" onclick="setRoadviewRoad()"><span>로드뷰</span></div>
+    </div>
+    
+    <!-- PC 전용 관리 버튼 -->
+    <div id="editModeBtn" onclick="toggleEditMode()">수정모드 켜기</div>
+    <div id="adminSubBtns">
+        <button id="addMarkerBtn" class="sub-admin-btn" onclick="enableAddMode()">➕ 새 소화전 추가</button>
+        <button id="downloadCsvBtn" class="sub-admin-btn" onclick="downloadCSV()">📥 현재목록 CSV 다운로드</button>
+        <button id="uploadCsvBtn" class="sub-admin-btn" onclick="document.getElementById('csvFileInput').click()">📤 CSV 일괄 업로드</button>
+        <input type="file" id="csvFileInput" accept=".csv" style="display:none;" onchange="handleCSVUpload(event)">
+    </div>
+
+    <!-- 우측 패널 -->
+    <div id="menu_wrap">
+        <div class="manager-bar">
+            <input type="text" id="mgrSearchInput" placeholder="담당자 또는 팀 검색" onkeyup="if(event.key==='Enter') searchByManager()">
+            <button onclick="searchByManager()">검색</button>
+            <button onclick="clearManagerSearch()" style="background:#6c757d;">취소</button>
+        </div>
+
+        <!-- 1. 팀 필터 바 -->
+        <div style="font-size:11px; color:#555; margin-bottom:3px; font-weight:bold;">팀별 분류:</div>
+        <div id="team_filter_wrap">
+            <button onclick="filterByTeam('전체')" style="background:#495057; color:#fff; font-weight:bold; border:none;">전체팀</button>
+        </div>
+
+        <!-- 2. 지역 필터 바 -->
+        <div style="font-size:11px; color:#555; margin-bottom:3px; font-weight:bold;">지역별 분류:</div>
+        <div id="filter_wrap">
+            <button onclick="filterHydrants('전체')" style="background:#0d6efd; color:#fff; font-weight:bold; border:none;">전체</button>
+        </div>
+
+        <!-- 체크박스 및 일괄 지정 바 -->
+        <div class="batch-action-bar">
+            <label><input type="checkbox" id="selectAllChk" onchange="toggleSelectAll(this.checked)"> 전체</label>
+            <button onclick="assignTeamAndManagerToChecked()">팀/담당자 일괄지정</button>
+            <button onclick="openCurrentListInNewWindow()" style="background:#0dcaf0; color:#000;">🔗 새창</button>
+        </div>
+
+        <div id="list_items_container"></div>
+    </div>
+</div>
+
+<div class="mobile_controls_wrapper">
+    <div class="control_group radius_border ct_map">
+        <span id="btnRoadmap" class="selected_btn" onclick="setMapType('roadmap')">지도</span>
+        <span id="btnSkyview" class="btn" onclick="setMapType('skyview')">스카이뷰</span>
+    </div>
+    <div class="control_group radius_border ct_ground">
+        <span id="btnGround" class="btn" onclick="setOverlayMapTypeId(true)">지적편집도</span>
+        <span id="btnGroundHide" class="selected_btn" onclick="setOverlayMapTypeId(false)">숨기기</span>
+    </div>
+    <div class="control_group radius_border ct_me">
+        <span id="btnCurrentMe" class="btn" onclick="mapCurrentPosition2()">내위치</span>
+        <span id="btnCurrentHideMe" class="selected_btn" onclick="mapCurrentPositionHide()">숨기기</span>
+    </div>
+    <div class="control_group radius_border ct_list">
+        <span id="btnTitleList" class="selected_btn" onclick="toggleShowList(true)">목록</span>
+        <span id="btnTitleListHide" class="btn" onclick="toggleShowList(false)">숨기기</span>
+    </div>
+</div>
+
+<div id="menu_rule">   
+    <button id='btnMARKER' onclick="rule_line()">거리</button>
+    <button id='btnPOLYLINE' onclick="rule_poly()">면적</button>
+    <button id='btnARROW' onclick="rule_circle()">반경</button>    
+    <button class="berror" onclick="RulerRemove()">초기화</button>
+</div>
+
+<script>
+Kakao.init('8716aeaad27b0f020a25063da87bd5de'); 
+
+var CLOUDFLARE_API_URL = "https://hydrant-api.90rlaworl.workers.dev/hydrants";
+
+var Navi_Imgsrc = "";
+var is_mobile = false;
+var UserAgent = navigator.userAgent;
+if (UserAgent.match(/iPhone|iPod|iPad|Android|Windows CE|BlackBerry|Symbian|Windows Phone|webOS|Opera Mini|Opera Mobi|POLARIS|IEMobile|lgtelecom|nokia|SonyEricsson/i) || UserAgent.match(/LG|SAMSUNG|Samsung/)) {
+    is_mobile = true;
+    Navi_Imgsrc = "<img src='https://blog.kakaocdn.net/dn/n32AT/btspnjHn5oH/roFNyJ3MjERPumDVr33sF1/navi.png?attach=1&knm=img.png' width='40' style='margin-bottom:5px;'><br>";
+}
+
+if (is_mobile) {
+    var editBtnEl = document.getElementById('editModeBtn');
+    var subBtnsEl = document.getElementById('adminSubBtns');
+    if (editBtnEl) editBtnEl.remove();
+    if (subBtnsEl) subBtnsEl.remove();
+}
+
+var mapContainer = document.getElementById('map');
+var mapCenter = new kakao.maps.LatLng(34.76014841, 127.661568); 
+var mapOption = { center: mapCenter, level: 5 };
+var map = new kakao.maps.Map(mapContainer, mapOption);
+
+var clusterer = new kakao.maps.MarkerClusterer({
+    map: map, averageCenter: true, minLevel: 6, disableClickZoom: false
+});
+
+var rvContainer = document.getElementById('roadview');
+var rv = new kakao.maps.Roadview(rvContainer); 
+var rvClient = new kakao.maps.RoadviewClient(); 
+var zoomControl = new kakao.maps.ZoomControl(); 
+map.addControl(zoomControl, kakao.maps.ControlPosition.RIGHT);
+
+var markers = [], customOverlays = [], infowindows = [];
+var myMarker = null;
+var hydrantData = [];  
+var isEditMode = false;
+var zAddMode = false;
+var currentFilter = '전체'; 
+var currentTeamFilter = '전체';
+var currentManagerFilter = ''; 
+
+function loadData() {
+    document.getElementById('loading').style.display = 'block';
+    
+    fetch(CLOUDFLARE_API_URL)
+        .then(response => {
+            if (!response.ok) throw new Error('API 응답 에러');
+            return response.json();
+        })
+        .then(data => {
+            document.getElementById('loading').style.display = 'none';
+            hydrantData = data;
+            
+            generateTeamButtons();
+            generateFilterButtons();
+            renderMapAndList();
+        })
+        .catch(error => {
+            document.getElementById('loading').innerHTML = "네트워크 연결 확인 필요<br>데이터 로드 실패!";
+            console.error('Error:', error);
+        });
+}
+
+// 1. 팀 필터 버튼 자동 생성
+function generateTeamButtons() {
+    var teams = new Set();
+    hydrantData.forEach(item => {
+        if (item.team && item.team.trim() !== "") {
+            teams.add(item.team.trim());
+        }
+    });
+
+    var wrap = document.getElementById('team_filter_wrap');
+    wrap.innerHTML = `<button onclick="filterByTeam('전체')" style="${currentTeamFilter==='전체'?'background:#495057; color:#fff; font-weight:bold; border:none;':'background:#f8f9fa; color:#333; border:1px solid #adb5bd;'}">전체팀</button>`;
+
+    Array.from(teams).sort().forEach(t => {
+        var isSelected = (currentTeamFilter === t);
+        var btnBg = isSelected ? "background:#495057; color:#fff; font-weight:bold; border:none;" : "background:#f8f9fa; color:#333; border:1px solid #adb5bd;";
+        var btn = document.createElement('button');
+        btn.innerText = t;
+        btn.setAttribute('onclick', `filterByTeam('${t}')`);
+        btn.style.cssText = btnBg;
+        wrap.appendChild(btn);
+    });
+}
+
+function filterByTeam(teamName) {
+    currentTeamFilter = teamName;
+    var buttons = document.querySelectorAll('#team_filter_wrap button');
+    buttons.forEach(btn => {
+        if (btn.innerText === (teamName === '전체' ? '전체팀' : teamName)) {
+            btn.style.background = "#495057";
+            btn.style.color = "#fff";
+            btn.style.border = "none";
+            btn.style.fontWeight = "bold";
+        } else {
+            btn.style.background = "#f8f9fa";
+            btn.style.color = "#333";
+            btn.style.border = "1px solid #adb5bd";
+            btn.style.fontWeight = "normal";
+        }
+    });
+    renderMapAndList();
+}
+
+// 2. 지역 필터 버튼 자동 생성
+function generateFilterButtons() {
+    var regions = new Set();
+    hydrantData.forEach(item => {
+        var parts = item.title.split('-');
+        if (parts.length >= 3) {
+            regions.add(parts[2]);
+        }
+    });
+
+    var filterWrap = document.getElementById('filter_wrap');
+    filterWrap.innerHTML = `<button onclick="filterHydrants('전체')" style="${currentFilter==='전체'?'background:#0d6efd; color:#fff; font-weight:bold; border:none;':'background:#f8f9fa; color:#333; border:1px solid #ccc;'}">전체</button>`;
+
+    regions.forEach(region => {
+        var isSelected = (currentFilter === region);
+        var btnBg = isSelected ? "background:#0d6efd; color:#fff; font-weight:bold; border:none;" : "background:#f8f9fa; color:#333; border:1px solid #ccc;";
+        
+        var btn = document.createElement('button');
+        btn.innerText = region;
+        btn.setAttribute('onclick', `filterHydrants('${region}')`);
+        btn.style.cssText = btnBg;
+        filterWrap.appendChild(btn);
+    });
+}
+
+function filterHydrants(keyword) {
+    currentFilter = keyword;
+    var buttons = document.querySelectorAll('#filter_wrap button');
+    buttons.forEach(btn => {
+        if(btn.innerText === keyword) {
+            btn.style.background = "#0d6efd";
+            btn.style.color = "#fff";
+            btn.style.border = "none";
+            btn.style.fontWeight = "bold";
+        } else {
+            btn.style.background = "#f8f9fa";
+            btn.style.color = "#333";
+            btn.style.border = "1px solid #ccc";
+            btn.style.fontWeight = "normal";
+        }
+    });
+    renderMapAndList();
+}
+
+function searchByManager() {
+    var val = document.getElementById('mgrSearchInput').value.trim();
+    currentManagerFilter = val;
+    renderMapAndList();
+}
+
+function clearManagerSearch() {
+    document.getElementById('mgrSearchInput').value = '';
+    currentManagerFilter = '';
+    renderMapAndList();
+}
+
+// 3. 지도 및 패널 렌더링
+function renderMapAndList() {
+    var listContainer = document.getElementById('list_items_container');
+    listContainer.innerHTML = ""; 
+    document.getElementById('selectAllChk').checked = false;
+    
+    var imageSize = new kakao.maps.Size(25, 28);
+    var imageOption = {offset: new kakao.maps.Point(12, 28)};
+
+    clusterer.clear(); 
+    markers = [];
+    customOverlays.forEach(overlay => overlay.setMap(null));
+    customOverlays = [];
+
+    var filteredList = hydrantData.filter(item => {
+        var matchRegion = (currentFilter === '전체' || item.title.includes(currentFilter));
+        var matchTeam = (currentTeamFilter === '전체' || item.team === currentTeamFilter);
+        var matchKeyword = (!currentManagerFilter || 
+            (item.manager && item.manager.includes(currentManagerFilter)) ||
+            (item.team && item.team.includes(currentManagerFilter))
+        );
+        return matchRegion && matchTeam && matchKeyword;
+    });
+
+    filteredList.forEach(function(item) {
+        var imgName = item.img ? item.img : "fs1"; 
+        var imgSrc = "https://worl90.github.io/jack/" + imgName + ".png";
+        var markerImage = new kakao.maps.MarkerImage(imgSrc, imageSize, imageOption);
+        
+        var position = new kakao.maps.LatLng(item.lat, item.lng);
+        var marker = new kakao.maps.Marker({
+            position: position,
+            image: markerImage,
+            draggable: isEditMode
+        });
+        marker.hydrantId = item.id;
+        markers.push(marker);
+
+        var customOverlay = new kakao.maps.CustomOverlay({
+            clickable: false, position: position, content: '<div class="label">' + item.title + '</div>', xAnchor: 0.5, yAnchor: -0.2, zIndex:-1
+        });
+        
+        if (map.getLevel() < 6) {
+            customOverlay.setMap(map);
+        }
+        customOverlays.push(customOverlay);
+
+        var naviHtml = "";
+        if (is_mobile) {
+            naviHtml = `<a id="navi" href="javascript:navi2('${item.title}', ${item.lat}, ${item.lng});">${Navi_Imgsrc}</a>`;
+        }
+        
+        var detailDesc = (item.detail && item.detail !== "NULL") ? item.detail : "상세설명 없음";
+        var teamName = item.team ? item.team : "팀 미지정";
+        var managerName = item.manager ? item.manager : "미지정";
+        
+        var editControlHtml = "";
+        if (!is_mobile) {
+            editControlHtml = `
+                <div style="margin-top:8px; display:flex; gap:4px;">
+                    <button onclick="openEditDialog(${item.id})" style="flex:1; padding:4px; font-size:11px; background:#0d6efd; color:#fff; border:none; border-radius:3px; cursor:pointer;">✏️ 정보/팀/담당자 편집</button>
+                </div>
+                <div style="margin-top:6px; font-size:11px; color:#dc3545;">
+                    ※ 수정모드 상태에서 마커를 드래그하면 위치가 저장됩니다.
+                </div>
+            `;
+        }
+
+        var content = `
+            <div class="showlistbox">
+                ${naviHtml}
+                <b>${item.id}. ${item.title}</b>
+                <div style="font-size:12px; color:#555;">📍 ${item.desc || '주소 미입력'}</div>
+                <div style="font-size:12px; color:#333; margin-top:2px;">▶ ${detailDesc}</div>
+                <div style="font-size:12px; color:#495057; font-weight:bold; margin-top:4px;">🏢 소속: <b>${teamName}</b></div>
+                <div style="font-size:12px; color:#0d6efd; font-weight:bold;">👤 담당자: ${managerName}</div>
+                ${editControlHtml}
+            </div>
+        `;
+        var infowindow = new kakao.maps.InfoWindow({ removable: true, content: content });
+        infowindows.push(infowindow);
+
+        kakao.maps.event.addListener(marker, 'click', function() {
+            infowindow.open(map, marker);
+        });
+
+        var originalPos;
+        kakao.maps.event.addListener(marker, 'dragstart', function() {
+            infowindow.close(); 
+            originalPos = marker.getPosition();
+        });
+
+        kakao.maps.event.addListener(marker, 'dragend', function() {
+            var newPos = marker.getPosition();
+            if(confirm(`[${item.title}]의 위치를 이 곳으로 수정하시겠습니까?`)) {
+                updateLocationDirectly(item.id, newPos.getLat(), newPos.getLng(), marker, originalPos, customOverlay);
+            } else {
+                marker.setPosition(originalPos);
+            }
+        });
+
+        var div = document.createElement('div');
+        div.className = 'list-item';
+        div.innerHTML = `
+            <input type="checkbox" class="hydrant-chk" value="${item.id}">
+            <span class="list-item-team">${item.team ? item.team : '미정'}</span>
+            <span class="list-item-title">${item.id}. ${item.title}</span>
+            <span class="list-item-mgr">${item.manager ? item.manager : '미지정'}</span>
+        `;
+        div.querySelector('.list-item-title').onclick = function() {
+            setCenter(item.lat, item.lng);
+            infowindow.open(map, marker);
+        };
+        listContainer.appendChild(div);
+    });
+
+    clusterer.addMarkers(markers);
+}
+
+// 4. 개별 소화전 편집 다이얼로그
+window.openEditDialog = function(id) {
+    var item = hydrantData.find(h => h.id == id);
+    if (!item) return;
+
+    var newTitle = prompt("소화전 명칭 수정:", item.title);
+    if (newTitle === null) return;
+
+    var newTeam = prompt("소속 팀 입력 (예: 1팀, 2팀):", item.team || "");
+    if (newTeam === null) return;
+
+    var newManager = prompt("담당자 이름 입력:", item.manager || "");
+    if (newManager === null) return;
+
+    var newDesc = prompt("주소 수정:", item.desc || "");
+    if (newDesc === null) return;
+
+    var newDetail = prompt("상세 설명 수정:", (item.detail && item.detail !== "NULL") ? item.detail : "");
+    if (newDetail === null) return;
+
+    var loadingLayer = document.getElementById('loading');
+    loadingLayer.innerHTML = "소화전 정보 업데이트 중...";
+    loadingLayer.style.display = 'block';
+
+    fetch(`${CLOUDFLARE_API_URL}/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            title: newTitle,
+            team: newTeam,
+            manager: newManager,
+            desc: newDesc,
+            detail: newDetail
+        })
+    })
+    .then(res => res.json())
+    .then(result => {
+        loadingLayer.style.display = 'none';
+        if (result.success) {
+            alert("수정되었습니다.");
+            item.title = newTitle;
+            item.team = newTeam;
+            item.manager = newManager;
+            item.desc = newDesc;
+            item.detail = newDetail;
+            generateTeamButtons();
+            renderMapAndList();
+        } else {
+            alert("저장 실패: " + result.error);
+        }
+    })
+    .catch(err => {
+        loadingLayer.style.display = 'none';
+        alert("통신 오류 발생");
+    });
+};
+
+function toggleSelectAll(checked) {
+    document.querySelectorAll('.hydrant-chk').forEach(chk => chk.checked = checked);
+}
+
+// 5. 선택 소화전 팀/담당자 일괄 지정
+function assignTeamAndManagerToChecked() {
+    var chks = document.querySelectorAll('.hydrant-chk:checked');
+    if (chks.length === 0) {
+        alert("선택된 소화전이 없습니다. 체크박스를 먼저 선택하세요.");
+        return;
+    }
+
+    var teamName = prompt(`${chks.length}개 소화전에 배정할 [팀 이름]을 입력하세요:\n(변경하지 않으려면 공란으로 두세요)`);
+    if (teamName === null) return;
+
+    var mgrName = prompt(`${chks.length}개 소화전에 배정할 [담당자 이름]을 입력하세요:\n(변경하지 않으려면 공란으로 두세요)`);
+    if (mgrName === null) return;
+
+    var payload = {};
+    if (teamName.trim() !== "") payload.team = teamName.trim();
+    if (mgrName.trim() !== "") payload.manager = mgrName.trim();
+
+    if (Object.keys(payload).length === 0) {
+        alert("팀 또는 담당자 중 하나는 입력해야 합니다.");
+        return;
+    }
+
+    var ids = Array.from(chks).map(c => parseInt(c.value));
+    payload.ids = ids;
+
+    var loadingLayer = document.getElementById('loading');
+    loadingLayer.innerHTML = "팀 및 담당자 일괄 지정 중...";
+    loadingLayer.style.display = 'block';
+
+    fetch(`${CLOUDFLARE_API_URL}/batch-assign`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+    })
+    .then(res => res.json())
+    .then(result => {
+        loadingLayer.style.display = 'none';
+        if (result.success) {
+            alert(`${result.count}개 소화전의 정보가 일괄 업데이트되었습니다.`);
+            ids.forEach(id => {
+                var itm = hydrantData.find(h => h.id == id);
+                if (itm) {
+                    if (payload.team !== undefined) itm.team = payload.team;
+                    if (payload.manager !== undefined) itm.manager = payload.manager;
+                }
+            });
+            generateTeamButtons();
+            renderMapAndList();
+        } else {
+            alert("지정 실패: " + result.error);
+        }
+    })
+    .catch(err => {
+        loadingLayer.style.display = 'none';
+        alert("통신 오류 발생");
+    });
+}
+
+// 6. 새 창으로 목록 인쇄 및 조회
+function openCurrentListInNewWindow() {
+    var filteredList = hydrantData.filter(item => {
+        var matchRegion = (currentFilter === '전체' || item.title.includes(currentFilter));
+        var matchTeam = (currentTeamFilter === '전체' || item.team === currentTeamFilter);
+        var matchKeyword = (!currentManagerFilter || 
+            (item.manager && item.manager.includes(currentManagerFilter)) ||
+            (item.team && item.team.includes(currentManagerFilter))
+        );
+        return matchRegion && matchTeam && matchKeyword;
+    });
+
+    var titleText = `소화전 목록 (지역:${currentFilter} / 팀:${currentTeamFilter}) - 총 ${filteredList.length}건`;
+
+    var tableRows = filteredList.map(item => `
+        <tr>
+            <td style="border:1px solid #ddd; padding:8px; text-align:center;">${item.id}</td>
+            <td style="border:1px solid #ddd; padding:8px; text-align:center; font-weight:bold;">${item.team || '-'}</td>
+            <td style="border:1px solid #ddd; padding:8px; font-weight:bold;">${item.title}</td>
+            <td style="border:1px solid #ddd; padding:8px;">${item.desc || ''}</td>
+            <td style="border:1px solid #ddd; padding:8px;">${(item.detail && item.detail!=='NULL') ? item.detail : ''}</td>
+            <td style="border:1px solid #ddd; padding:8px; text-align:center; color:#0d6efd; font-weight:bold;">${item.manager || '-'}</td>
+            <td style="border:1px solid #ddd; padding:8px; text-align:center;">
+                <a href="https://map.kakao.com/link/map/${item.title},${item.lat},${item.lng}" target="_blank" style="color:#0d6efd; text-decoration:none;">지도보기</a>
+            </td>
+        </tr>
+    `).join('');
+
+    var newWinHtml = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <title>${titleText}</title>
+            <style>
+                body { font-family: 'Malgun Gothic', sans-serif; padding: 20px; }
+                table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 13px; }
+                th { background: #f2f4f7; border: 1px solid #ddd; padding: 10px; }
+                tr:nth-child(even) { background-color: #fafafa; }
+                .top-bar { display:flex; justify-content:space-between; align-items:center; }
+                button { padding: 6px 14px; cursor: pointer; border-radius: 4px; border: 1px solid #ccc; background:#fff; }
+            </style>
+        </head>
+        <body>
+            <div class="top-bar">
+                <h2>${titleText}</h2>
+                <button onclick="window.print()">🖨️ 페이지 인쇄</button>
+            </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th width="60">ID</th>
+                        <th width="80">소속팀</th>
+                        <th width="160">소화전 명칭</th>
+                        <th>도로명 주소</th>
+                        <th>상세 설명</th>
+                        <th width="100">담당자</th>
+                        <th width="80">지도</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${tableRows}
+                </tbody>
+            </table>
+        </body>
+        </html>
+    `;
+
+    var newWin = window.open("", "_blank");
+    newWin.document.write(newWinHtml);
+    newWin.document.close();
+}
+
+window.toggleEditMode = function() {
+    var btn = document.getElementById('editModeBtn');
+    var subBtns = document.getElementById('adminSubBtns');
+
+    if(!isEditMode) {
+        var pw = prompt("관리자 비밀번호를 입력하세요.");
+        if(pw === "1234") {
+            isEditMode = true;
+            btn.classList.add('active');
+            btn.innerText = "수정모드 작동중 (마커 드래그 가능)";
+            if (subBtns) subBtns.style.display = 'flex';
+            markers.forEach(m => m.setDraggable(true));
+            alert("수정모드가 켜졌습니다.\n팀/담당자 지정 및 마커 드래그가 가능합니다.");
+        } else if (pw !== null) {
+            alert("비밀번호가 일치하지 않습니다.");
+        }
+    } else {
+        isEditMode = false;
+        cancelAddMode();
+        btn.classList.remove('active');
+        btn.innerText = "수정모드 켜기";
+        if (subBtns) subBtns.style.display = 'none';
+        markers.forEach(m => m.setDraggable(false));
+    }
+};
+
+window.enableAddMode = function() {
+    zAddMode = true;
+    var addBtn = document.getElementById('addMarkerBtn');
+    addBtn.innerText = "지도의 설치할 위치를 클릭하세요...";
+    addBtn.style.background = "#ffc107";
+    addBtn.style.borderColor = "#ffc107";
+    addBtn.style.color = "#000";
+};
+
+window.cancelAddMode = function() {
+    zAddMode = false;
+    var addBtn = document.getElementById('addMarkerBtn');
+    if (addBtn) {
+        addBtn.innerText = "➕ 새 소화전 추가";
+        addBtn.style.background = "#28a745";
+        addBtn.style.borderColor = "#28a745";
+        addBtn.style.color = "#fff";
+    }
+};
+
+// ★ 스마트 CSV 다운로드 (선택된 지역/팀 필터 항목만 추출)
+function downloadCSV() {
+    if (!hydrantData || hydrantData.length === 0) {
+        alert("다운로드할 소화전 데이터가 없습니다.");
+        return;
+    }
+
+    var targetList = hydrantData.filter(item => {
+        var matchRegion = (currentFilter === '전체' || item.title.includes(currentFilter));
+        var matchTeam = (currentTeamFilter === '전체' || item.team === currentTeamFilter);
+        var matchKeyword = (!currentManagerFilter || 
+            (item.manager && item.manager.includes(currentManagerFilter)) ||
+            (item.team && item.team.includes(currentManagerFilter))
+        );
+        return matchRegion && matchTeam && matchKeyword;
+    });
+
+    if (targetList.length === 0) {
+        alert("현재 선택된 조건에 해당하는 소화전이 없습니다.");
+        return;
+    }
+
+    var headers = ["id", "title", "lat", "lng", "desc", "detail", "img", "team", "manager"];
+    var csvRows = [];
+    csvRows.push(headers.join(","));
+
+    targetList.forEach(function(item) {
+        var row = [
+            item.id,
+            `"${(item.title || "").replace(/"/g, '""')}"`,
+            item.lat,
+            item.lng,
+            `"${(item.desc || "").replace(/"/g, '""')}"`,
+            `"${((item.detail && item.detail !== 'NULL') ? item.detail : "").replace(/"/g, '""')}"`,
+            `"${(item.img || "fs1").replace(/"/g, '""')}"`,
+            `"${(item.team || "").replace(/"/g, '""')}"`,
+            `"${(item.manager || "").replace(/"/g, '""')}"`
+        ];
+        csvRows.push(row.join(","));
+    });
+
+    var csvString = "\uFEFF" + csvRows.join("\r\n");
+    var blob = new Blob([csvString], { type: "text/csv;charset=utf-8;" });
+    var link = document.createElement("a");
+    var url = URL.createObjectURL(blob);
+    
+    var today = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+    var filterName = "";
+    if (currentFilter !== '전체') filterName += `_${currentFilter}`;
+    if (currentTeamFilter !== '전체') filterName += `_${currentTeamFilter}`;
+    if (currentManagerFilter) filterName += `_${currentManagerFilter}`;
+    if (!filterName) filterName = "_전체";
+
+    link.setAttribute("href", url);
+    link.setAttribute("download", `소화전${filterName}_${today}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+}
+
+// 8. CSV 파싱 및 일괄 업로드 처리
+function parseCSVText(text) {
+    var lines = text.split(/\r\n|\n|\r/).filter(line => line.trim() !== "");
+    if (lines.length < 2) return [];
+
+    function parseLine(line) {
+        var result = [];
+        var cur = "";
+        var inQuotes = false;
+        for (var i = 0; i < line.length; i++) {
+            var c = line[i];
+            if (c === '"') {
+                if (inQuotes && line[i + 1] === '"') {
+                    cur += '"';
+                    i++;
+                } else {
+                    inQuotes = !inQuotes;
+                }
+            } else if (c === ',' && !inQuotes) {
+                result.push(cur.trim());
+                cur = "";
+            } else {
+                cur += c;
+            }
+        }
+        result.push(cur.trim());
+        return result;
+    }
+
+    var headers = parseLine(lines[0]).map(h => h.toLowerCase().replace(/['"]/g, ''));
+    var items = [];
+
+    for (var i = 1; i < lines.length; i++) {
+        var cols = parseLine(lines[i]);
+        if (cols.length === 0 || (cols.length === 1 && cols[0] === "")) continue;
+
+        var obj = {};
+        headers.forEach((h, idx) => {
+            obj[h] = cols[idx] !== undefined ? cols[idx] : "";
+        });
+
+        if (obj.id && obj.title && obj.lat && obj.lng) {
+            items.push({
+                id: parseInt(obj.id),
+                title: obj.title,
+                lat: parseFloat(obj.lat),
+                lng: parseFloat(obj.lng),
+                desc: obj.desc || "",
+                detail: obj.detail || "",
+                img: obj.img || "fs1",
+                team: obj.team || "",
+                manager: obj.manager || ""
+            });
+        }
+    }
+    return items;
+}
+
+function handleCSVUpload(event) {
+    var file = event.target.files[0];
+    if (!file) return;
+
+    var reader = new FileReader();
+    reader.onload = function(e) {
+        try {
+            var text = e.target.result;
+            var parsedItems = parseCSVText(text);
+
+            if (parsedItems.length === 0) {
+                alert("CSV 파일에 유효한 데이터가 없거나 헤더 규격이 맞지 않습니다.");
+                event.target.value = "";
+                return;
+            }
+
+            if (!confirm(`총 ${parsedItems.length}개의 소화전 데이터를 클라우드에 일괄 등록/수정하시겠습니까?`)) {
+                event.target.value = "";
+                return;
+            }
+
+            var loadingLayer = document.getElementById('loading');
+            loadingLayer.innerHTML = `총 ${parsedItems.length}건 데이터 일괄 반영 중...`;
+            loadingLayer.style.display = 'block';
+
+            fetch(`${CLOUDFLARE_API_URL}/batch-upsert`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ items: parsedItems })
+            })
+            .then(res => res.json())
+            .then(result => {
+                loadingLayer.style.display = 'none';
+                event.target.value = "";
+                if (result.success) {
+                    alert(`성공적으로 ${result.count}건의 소화전 데이터가 반영되었습니다!`);
+                    loadData();
+                } else {
+                    alert("일괄 업로드 실패: " + result.error);
+                }
+            })
+            .catch(err => {
+                loadingLayer.style.display = 'none';
+                event.target.value = "";
+                alert("통신 중 오류가 발생했습니다.");
+            });
+
+        } catch (err) {
+            alert("CSV 파싱 오류: " + err.message);
+            event.target.value = "";
+        }
+    };
+
+    reader.readAsText(file, "utf-8");
+}
+
+// 9. 지도 클릭 새 소화전 등록
+kakao.maps.event.addListener(map, 'click', function(mouseEvent) {
+    if (zAddMode) {
+        var lat = mouseEvent.latLng.getLat();
+        var lng = mouseEvent.latLng.getLng();
+        
+        var newTitle = prompt("1. [소화전 명칭]을 입력하세요.\n(예: B-가-학동-999호)");
+        if(!newTitle) { cancelAddMode(); return; }
+        
+        var newTeam = prompt("2. [소속 팀 이름]을 입력하세요. (예: 1팀, 2팀)");
+        if(newTeam === null) newTeam = "";
+
+        var newManager = prompt("3. [담당자 이름]을 입력하세요.");
+        if(newManager === null) newManager = "";
+
+        var newDesc = prompt("4. [도로명 주소]를 입력하세요.");
+        if(newDesc === null) newDesc = "";
+
+        var newDetail = prompt("5. [상세 위치 설명]을 입력하세요.");
+        if(newDetail === null) newDetail = "";
+
+        var newImg = prompt("6. [아이콘 구분] (fs1 ~ fs10)", "fs1");
+        if(!newImg) newImg = "fs1";
+
+        insertNewHydrant(newTitle, lat, lng, newDesc, newDetail, newImg, newTeam, newManager);
+        cancelAddMode();
+    }
+});
+
+function insertNewHydrant(title, lat, lng, desc, detail, img, team, manager) {
+    var loadingLayer = document.getElementById('loading');
+    loadingLayer.innerHTML = "새 소화전을 클라우드에 등록 중...";
+    loadingLayer.style.display = 'block';
+
+    fetch(CLOUDFLARE_API_URL, {
+        method: 'POST',
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title, lat, lng, desc, detail, img, team, manager })
+    })
+    .then(res => res.json())
+    .then(result => {
+        loadingLayer.style.display = 'none';
+        if(result.success) {
+            alert(`소화전 #${result.id}번이 등록되었습니다.`);
+            loadData(); 
+        } else {
+            alert("등록 실패: " + result.error);
+        }
+    })
+    .catch(err => {
+        loadingLayer.style.display = 'none';
+        alert("통신 오류 발생");
+    });
+}
+
+function updateLocationDirectly(id, lat, lng, markerObj, originalPos, overlayObj) {
+    var loadingLayer = document.getElementById('loading');
+    loadingLayer.innerHTML = "클라우드에 위치 저장 중...";
+    loadingLayer.style.display = 'block';
+
+    fetch(`${CLOUDFLARE_API_URL}/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lat: lat, lng: lng })
+    })
+    .then(res => res.json())
+    .then(result => {
+        loadingLayer.style.display = 'none';
+        if(result.success) {
+            alert("위치가 클라우드에 저장되었습니다.");
+            overlayObj.setPosition(new kakao.maps.LatLng(lat, lng)); 
+            var item = hydrantData.find(h => h.id == id);
+            if (item) { item.lat = lat; item.lng = lng; }
+        } else {
+            alert("저장 실패: " + result.error);
+            markerObj.setPosition(originalPos);
+        }
+    })
+    .catch(err => {
+        loadingLayer.style.display = 'none';
+        alert("통신 오류로 인해 원위치됩니다.");
+        markerObj.setPosition(originalPos);
+    });
+}
+
+kakao.maps.event.addListener(map, 'zoom_changed', function() {
+    var level = map.getLevel();
+    if (level >= 6) { 
+        customOverlays.forEach(overlay => overlay.setMap(null)); 
+    } else {
+        customOverlays.forEach(overlay => overlay.setMap(map));  
+    }
+});
+
+window.onload = loadData;
+
+// 기타 컨트롤 및 그리기 함수
+function setMapType(maptype) { 
+    if (maptype === 'roadmap') {
+        map.setMapTypeId(kakao.maps.MapTypeId.ROADMAP);  
+        document.getElementById('btnRoadmap').className = 'selected_btn';
+        document.getElementById('btnSkyview').className = 'btn';      
+    } else {
+        map.setMapTypeId(kakao.maps.MapTypeId.HYBRID);  
+        document.getElementById('btnSkyview').className = 'selected_btn';
+        document.getElementById('btnRoadmap').className = 'btn';        
+    }
+}
+function setOverlayMapTypeId(isActive) {
+    if(isActive) {
+        map.addOverlayMapTypeId(kakao.maps.MapTypeId.USE_DISTRICT);        
+        document.getElementById('btnGround').className = 'selected_btn';
+        document.getElementById('btnGroundHide').className = 'btn';     
+    } else {
+        map.removeOverlayMapTypeId(kakao.maps.MapTypeId.USE_DISTRICT);  
+        document.getElementById('btnGround').className = 'btn';
+        document.getElementById('btnGroundHide').className = 'selected_btn';  
+    }
+} 
+function toggleShowList(isShow) {
+    var menuWrap = document.getElementById('menu_wrap');
+    if (isShow) {
+        menuWrap.style.display = 'block';
+        document.getElementById('btnTitleList').className = 'selected_btn';
+        document.getElementById('btnTitleListHide').className = 'btn';      
+    } else {
+        menuWrap.style.display = 'none';
+        document.getElementById('btnTitleList').className = 'btn';
+        document.getElementById('btnTitleListHide').className = 'selected_btn';      
+    }
+}  
+function mapCurrentPosition2(){
+    if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(function(pos) {
+            var locPosition = new kakao.maps.LatLng(pos.coords.latitude, pos.coords.longitude);
+            if(!myMarker) {
+                var mImage = new kakao.maps.MarkerImage("/map/pin_me.png", new kakao.maps.Size(56, 49), {offset: new kakao.maps.Point(28, 49)});
+                myMarker = new kakao.maps.Marker({ map: map, position: locPosition, title : "내위치" });
+            } else {
+                myMarker.setPosition(locPosition);
+            }
+            myMarker.setVisible(true);
+            map.setCenter(locPosition);
+            
+            document.getElementById('btnCurrentMe').className = 'selected_btn';
+            document.getElementById('btnCurrentHideMe').className = 'btn';     
+        }, function() { alert("위치 정보를 가져올 수 없습니다."); });
+    }
+}
+function mapCurrentPositionHide(){
+    if(myMarker) myMarker.setVisible(false);
+    document.getElementById('btnCurrentMe').className = 'btn';
+    document.getElementById('btnCurrentHideMe').className = 'selected_btn';     
+}
+function navi2(m_name, p_m_y, p_m_x) {
+    Kakao.Navi.start({ name: m_name, x: parseFloat(p_m_x), y: parseFloat(p_m_y), coordType: 'wgs84' });
+}
+function setCenter(Lat, Lng) {
+    if (Lat == null) return;
+    var moveLatLon = new kakao.maps.LatLng(Lat, Lng);
+    map.panTo(moveLatLon);
+    var circle = new kakao.maps.Circle({ center: moveLatLon, radius: 100, strokeWeight: 1, strokeColor: '#ffa500', strokeOpacity: 1, strokeStyle: 'dashed', fillColor: '#FF0000', fillOpacity: 0.3 });
+    circle.setMap(map);
+    setTimeout(function () { circle.setMap(null); }, 2000);
+}
+
+var overlayOn = false;
+var rvMarkImage = new kakao.maps.MarkerImage('https://t1.daumcdn.net/localimg/localimages/07/mapapidoc/roadview_wk.png', new kakao.maps.Size(35,39), { offset: new kakao.maps.Point(14, 39) });
+var rvMarker = new kakao.maps.Marker({ image : rvMarkImage, position: mapCenter, draggable: true });
+kakao.maps.event.addListener(rv, 'position_changed', function() { var rvPosition = rv.getPosition(); map.setCenter(rvPosition); if(overlayOn) rvMarker.setPosition(rvPosition); });
+kakao.maps.event.addListener(rvMarker, 'dragend', function() { toggleRoadview(rvMarker.getPosition()); });
+kakao.maps.event.addListener(map, 'click', function(mouseEvent){ if(!overlayOn) return; rvMarker.setPosition(mouseEvent.latLng); toggleRoadview(mouseEvent.latLng); });
+function toggleRoadview(position){ rvClient.getNearestPanoId(position, 50, function(panoId) { if (panoId === null) { toggleMapWrapper(true, position); } else { toggleMapWrapper(false, position); rv.setPanoId(panoId, position); } }); }
+function toggleMapWrapper(active, position) {
+    var container = document.getElementById('container');
+    if (active) { container.className = ''; setTimeout(function(){ map.relayout(); map.setCenter(position); }, 300);
+    } else { if (container.className.indexOf('view_roadview') === -1) { container.className = 'view_roadview'; setTimeout(function(){ map.relayout(); map.setCenter(position); }, 300); } }
+}
+function setRoadviewRoad() {
+    var control = document.getElementById('roadviewControl');
+    if (control.className.indexOf('active') === -1) { control.className = 'active'; overlayOn = true; map.addOverlayMapTypeId(kakao.maps.MapTypeId.ROADVIEW); rvMarker.setMap(map); rvMarker.setPosition(map.getCenter()); toggleRoadview(map.getCenter());
+    } else { control.className = ''; overlayOn = false; map.removeOverlayMapTypeId(kakao.maps.MapTypeId.ROADVIEW); rvMarker.setMap(null); }
+}
+function closeRoadview() { toggleMapWrapper(true, rvMarker.getPosition()); }
+
+var drawingFlagCir = false, centerPosition, drawingCircle, drawingLineC, drawingOverlay;
+var circles = [], clickLine, moveLine, drawingFlagLine = false, distanceOverlay, dots = [];
+var drawingFlagPoly = false, drawingPolygon, polygon, areaOverlay;
+var clickHandlerRule, mousemoveHandlerRule, rightclickHandlerRule;
+
+function setRuleClear() { kakao.maps.event.removeListener(map, 'click', clickHandlerRule); kakao.maps.event.removeListener(map, 'mousemove', mousemoveHandlerRule); kakao.maps.event.removeListener(map, 'rightclick', rightclickHandlerRule); }
+function rule_circle() {
+    setRuleClear();
+    clickHandlerRule = function(mouseEvent) {   
+        if (!drawingFlagCir) { removeCircles(); drawingFlagCir = true; centerPosition = mouseEvent.latLng; 
+            if (!drawingLineC) { drawingLineC = new kakao.maps.Polyline({ strokeWeight: 3, strokeColor: '#00a0e9', strokeOpacity: 1, strokeStyle: 'solid' });  }
+            if (!drawingCircle) { drawingCircle = new kakao.maps.Circle({ strokeWeight: 1, strokeColor: '#00a0e9', strokeOpacity: 0.1, strokeStyle: 'solid', fillColor: '#00a0e9', fillOpacity: 0.2 }); }
+            if (!drawingOverlay) { drawingOverlay = new kakao.maps.CustomOverlay({ xAnchor: 0, yAnchor: 0, zIndex: 1 }); } }
+    };
+    kakao.maps.event.addListener(map, 'click', clickHandlerRule);
+    mousemoveHandlerRule = function (mouseEvent) {
+        if (drawingFlagCir) { var mousePosition = mouseEvent.latLng; var linePath = [centerPosition, mousePosition]; drawingLineC.setPath(linePath); var length = drawingLineC.getLength();
+            if(length > 0) { drawingCircle.setOptions({ center : centerPosition, radius: length }); var radius = Math.round(drawingCircle.getRadius()); var content = '<div class="info">반경 <span class="number">' + radius + '</span>m</div>'; drawingOverlay.setPosition(mousePosition); drawingOverlay.setContent(content); drawingCircle.setMap(map); drawingLineC.setMap(map); drawingOverlay.setMap(map);
+            } else { drawingCircle.setMap(null); drawingLineC.setMap(null); drawingOverlay.setMap(null); } }      
+    };
+    kakao.maps.event.addListener(map, 'mousemove', mousemoveHandlerRule);
+    rightclickHandlerRule = function(mouseEvent) {    
+        if (drawingFlagCir) { var rClickPosition = mouseEvent.latLng; var polyline = new kakao.maps.Polyline({ path: [centerPosition, rClickPosition], strokeWeight: 3, strokeColor: '#00a0e9', strokeOpacity: 1, strokeStyle: 'solid' }); var circle = new kakao.maps.Circle({ center : centerPosition, radius: polyline.getLength(), strokeWeight: 1, strokeColor: '#00a0e9', strokeOpacity: 0.1, strokeStyle: 'solid', fillColor: '#00a0e9', fillOpacity: 0.2 }); var radius = Math.round(circle.getRadius()); var content = getTimeHTML_C(radius); var radiusOverlay = new kakao.maps.CustomOverlay({ content: content, position: rClickPosition, xAnchor: 0, yAnchor: 0, zIndex: 1 });  circle.setMap(map); polyline.setMap(map); radiusOverlay.setMap(map); circles.push({ 'polyline' : polyline, 'circle' : circle, 'overlay' : radiusOverlay }); drawingFlagCir = false; centerPosition = null; drawingCircle.setMap(null); drawingLineC.setMap(null); drawingOverlay.setMap(null); }
+    };   
+    kakao.maps.event.addListener(map, 'rightclick', rightclickHandlerRule);
+}
+function removeCircles() { for (var i = 0; i < circles.length; i++) { circles[i].circle.setMap(null); circles[i].polyline.setMap(null); circles[i].overlay.setMap(null); } circles = []; }
+function getTimeHTML_C(distance) { var walkkTime = distance / 67 | 0; var walkHour = '', walkMin = ''; if (walkkTime > 60) walkHour = '<span class="number">' + Math.floor(walkkTime / 60) + '</span>시간 '; walkMin = '<span class="number">' + walkkTime % 60 + '</span>분'; var bycicleTime = distance / 227 | 0; var bycicleHour = '', bycicleMin = ''; if (bycicleTime > 60) bycicleHour = '<span class="number">' + Math.floor(bycicleTime / 60) + '</span>시간 '; bycicleMin = '<span class="number">' + bycicleTime % 60 + '</span>분'; return '<ul class="info"><span>총거리</span><span class="number">' + distance + '</span>m <span >도보</span>' + walkHour + walkMin + ' <span >자전거</span>' + bycicleHour + bycicleMin + '</ul>'; }
+
+function rule_line() {
+    setRuleClear();
+    clickHandlerRule = function(mouseEvent) {    
+        var clickPosition = mouseEvent.latLng;
+        if (!drawingFlagLine) { drawingFlagLine = true; deleteClickLine(); deleteDistnce(); deleteCircleDot(); clickLine = new kakao.maps.Polyline({ map: map, path: [clickPosition], strokeWeight: 3, strokeColor: '#db4040', strokeOpacity: 1, strokeStyle: 'solid' }); moveLine = new kakao.maps.Polyline({ strokeWeight: 3, strokeColor: '#db4040', strokeOpacity: 0.5, strokeStyle: 'solid' }); displayCircleDot(clickPosition, 0);
+        } else { var path = clickLine.getPath(); path.push(clickPosition); clickLine.setPath(path); var distance = Math.round(clickLine.getLength()); displayCircleDot(clickPosition, distance); }
+    };
+    kakao.maps.event.addListener(map, 'click', clickHandlerRule);
+    mousemoveHandlerRule = function (mouseEvent) {
+        if (drawingFlagLine){ var mousePosition = mouseEvent.latLng; var path = clickLine.getPath(); var movepath = [path[path.length-1], mousePosition]; moveLine.setPath(movepath); moveLine.setMap(map); var distance = Math.round(clickLine.getLength() + moveLine.getLength()); var content = '<div class="dotOverlay distanceInfo">총거리 <span class="number">' + distance + '</span>m</div>'; showDistance(content, mousePosition); }              
+    };
+    kakao.maps.event.addListener(map, 'mousemove', mousemoveHandlerRule);                  
+    rightclickHandlerRule = function(mouseEvent) {    
+        if (drawingFlagLine) { moveLine.setMap(null); moveLine = null; var path = clickLine.getPath(); if (path.length > 1) { if (dots[dots.length-1].distance) { dots[dots.length-1].distance.setMap(null); dots[dots.length-1].distance = null; } var distance = Math.round(clickLine.getLength()); var content = getTimeHTML_L(distance); showDistance(content, path[path.length-1]); } else { deleteClickLine(); deleteCircleDot(); deleteDistnce(); } drawingFlagLine = false; }  
+    };
+    kakao.maps.event.addListener(map, 'rightclick', rightclickHandlerRule);
+    function deleteClickLine() { if (clickLine) { clickLine.setMap(null); clickLine = null; } }
+    function showDistance(content, position) { if (distanceOverlay) { distanceOverlay.setPosition(position); distanceOverlay.setContent(content); } else { distanceOverlay = new kakao.maps.CustomOverlay({ map: map, content: content, position: position, xAnchor: 0, yAnchor: 0, zIndex: 3 }); } }
+    function deleteDistnce () { if (distanceOverlay) { distanceOverlay.setMap(null); distanceOverlay = null; } }
+    function displayCircleDot(position, distance) { var circleOverlay = new kakao.maps.CustomOverlay({ content: '<span class="dot"></span>', position: position, zIndex: 1 }); circleOverlay.setMap(map); var distanceOverlay = null; if (distance > 0) { distanceOverlay = new kakao.maps.CustomOverlay({ content: '<div class="dotOverlay">거리 <span class="number">' + distance + '</span>m</div>', position: position, yAnchor: 1, zIndex: 2 }); distanceOverlay.setMap(map); } dots.push({circle:circleOverlay, distance: distanceOverlay}); }
+    function deleteCircleDot() { for (var i = 0; i < dots.length; i++ ){ if (dots[i].circle) dots[i].circle.setMap(null); if (dots[i].distance) dots[i].distance.setMap(null); } dots = []; }
+    function getTimeHTML_L(distance) { var walkkTime = distance / 67 | 0; var walkHour = '', walkMin = ''; if (walkkTime > 60) walkHour = '<span class="number">' + Math.floor(walkkTime / 60) + '</span>시간 '; walkMin = '<span class="number">' + walkkTime % 60 + '</span>분'; var bycicleTime = distance / 227 | 0; var bycicleHour = '', bycicleMin = ''; if (bycicleTime > 60) bycicleHour = '<span class="number">' + Math.floor(bycicleTime / 60) + '</span>시간 '; bycicleMin = '<span class="number">' + bycicleTime % 60 + '</span>분'; return '<ul class="dotOverlay distanceInfo"><span >총거리</span><span class="number">' + distance + '</span>m <span >도보</span>' + walkHour + walkMin + ' <span >자전거</span>' + bycicleHour + bycicleMin + '</ul>'; }
+}
+
+function rule_poly() {
+    setRuleClear();
+    clickHandlerRule = function(mouseEvent) {    
+        var clickPosition = mouseEvent.latLng; 
+        if (!drawingFlagPoly) { drawingFlagPoly = true; if (polygon) { polygon.setMap(null); polygon = null; } if (areaOverlay) { areaOverlay.setMap(null); areaOverlay = null; } drawingPolygon = new kakao.maps.Polygon({ map: map, path: [clickPosition], strokeWeight: 3, strokeColor: '#00a0e9', strokeOpacity: 1, strokeStyle: 'solid', fillColor: '#00a0e9', fillOpacity: 0.2 }); polygon = new kakao.maps.Polygon({ path: [clickPosition], strokeWeight: 3, strokeColor: '#00a0e9', strokeOpacity: 1, strokeStyle: 'solid', fillColor: '#00a0e9', fillOpacity: 0.2 });
+        } else { var drawingPath = drawingPolygon.getPath(); drawingPath.push(clickPosition); drawingPolygon.setPath(drawingPath); var path = polygon.getPath(); path.push(clickPosition); polygon.setPath(path); }   
+    }; 
+    kakao.maps.event.addListener(map, 'click', clickHandlerRule);
+    mousemoveHandlerRule = function (mouseEvent) { if (drawingFlagPoly){ var mousePosition = mouseEvent.latLng; var path = drawingPolygon.getPath(); if (path.length > 1) path.pop(); path.push(mousePosition); drawingPolygon.setPath(path); } };     
+    kakao.maps.event.addListener(map, 'mousemove', mousemoveHandlerRule);
+    rightclickHandlerRule = function(mouseEvent) {    
+        if (drawingFlagPoly) { drawingPolygon.setMap(null); drawingPolygon = null; var path = polygon.getPath(); if (path.length > 2) { polygon.setMap(map); var area = Math.round(polygon.getArea()); var content = '<div class="info">총면적 <span class="number"> ' + area + '</span> m<sup>2</sup></div>'; areaOverlay = new kakao.maps.CustomOverlay({ map: map, content: content, xAnchor: 0, yAnchor: 0, position: path[path.length-1] }); } else { polygon = null; } drawingFlagPoly = false; }  
+    };
+    kakao.maps.event.addListener(map, 'rightclick', rightclickHandlerRule);
+}
+function RulerRemove(){
+    if (clickLine) { clickLine.setMap(null); clickLine = null; }
+    if (distanceOverlay) { distanceOverlay.setMap(null); distanceOverlay = null; }
+    for ( var i = 0; i < dots.length; i++ ){ if (dots[i].circle) dots[i].circle.setMap(null); if (dots[i].distance) dots[i].distance.setMap(null); } dots = [];
+    if (polygon) { polygon.setMap(null); polygon = null; }
+    if (areaOverlay) { areaOverlay.setMap(null); areaOverlay = null; }
+    removeCircles();
+}
+</script>
+</body>
+</html>
+
